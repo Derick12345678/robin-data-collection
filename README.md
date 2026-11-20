@@ -14,6 +14,13 @@ adapter is deliberately unimplemented; the scaffold does not contact search
 engines, start Tor, or automatically run live searches. Query configuration is a
 team planning template and is not yet consumed by the offline import command.
 
+## Robin installation
+
+Robin v3.1 is pinned by immutable Docker digest in `compose.yaml`, with release
+provenance in `deploy/robin.lock.json`. Follow [the setup guide](docs/robin-setup.md)
+for WSL or Windows commands, local credentials, persistent storage, and verification.
+The pinned environment is separate from the unimplemented live collection adapter.
+
 ## Quick start (WSL/Linux, Python 3.11+)
 
 ```bash

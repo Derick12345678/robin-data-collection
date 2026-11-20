@@ -16,3 +16,7 @@ outputs/*
 coverage.xml
 .coverage
 .pytest_cache/
+
+# Robin local provider configuration and optional report directories
+deploy/robin.env
+investigations/
