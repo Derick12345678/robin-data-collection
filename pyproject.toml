@@ -11,6 +11,7 @@ dependencies = []
 
 [project.scripts]
 robin-collect = "robin_collect.cli:main"
+robin-limits = "robin_collect.limits:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

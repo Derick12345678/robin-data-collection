@@ -1,0 +1,44 @@
+name: robin-data-collection
+
+x-robin-common: &robin-common
+  # Robin v3.1, multi-platform index. See deploy/robin.lock.json.
+  image: apurvsg/robin@sha256:579aae11b9100078ecd0d700f4057117e3ded6f37a37d7dfdf773bfcceded5c0
+  env_file:
+    - ./deploy/robin.env
+  environment:
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    ROBIN_TOR_LOG: /home/robin/tor-notices.log
+  volumes:
+    - investigations:/app/investigations
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  robin-ui:
+    <<: *robin-common
+    profiles: [ui]
+    command: [ui]
+    ports:
+      - "127.0.0.1:${ROBIN_UI_PORT:-18501}:8501"
+    restart: "no"
+
+  robin-mcp:
+    <<: *robin-common
+    profiles: [mcp]
+    command: [mcp]
+    stdin_open: true
+    tty: false
+    restart: "no"
+
+volumes:
+  investigations:
+    name: robin-data-collection-investigations

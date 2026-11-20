@@ -1,0 +1,20 @@
+{
+  "release": "v3.1",
+  "release_url": "https://github.com/apurvsinghgautam/robin/releases/tag/v3.1",
+  "source_commit": "b5d4f5f509fac39d65d3a28fd1d78b56efbeeaf4",
+  "image_repository": "apurvsg/robin",
+  "image_digest": "sha256:579aae11b9100078ecd0d700f4057117e3ded6f37a37d7dfdf773bfcceded5c0",
+  "image": "apurvsg/robin@sha256:579aae11b9100078ecd0d700f4057117e3ded6f37a37d7dfdf773bfcceded5c0",
+  "verified_at_utc": "2026-11-20",
+  "source_sha256": {
+    "entrypoint.sh": "7f0cd3236af1e1f6370b35f0b7ca018834ddd928a6040d6db4a4ae1408e47332",
+    "mcp_server.py": "f947b6a25cc58012988d6a538aba3b6747821a65864526a7410fea9b9de974ac",
+    "pipeline.py": "fd59880a46b556975b1f161fabd364d034e33061e703cc1ca5d1747a0a44306d",
+    "requirements.txt": "90c05b231a9d1bd3742fb00ae448084c5e8fddc0f9e6fae396add645461c9dd6",
+    "Dockerfile": "987bc4d26606e78fbe305c98cb0f5b8c71d3e74d1a66006ee942de8f3dcb7cc3"
+  },
+  "platform_manifests": {
+    "linux/amd64": "sha256:9c4c7a6f4711b9f04069f43cacef64516678beedab6f1ae956929281412f4a22",
+    "linux/arm64": "sha256:30f5144dc1aaf302d42b82bb7944c2fd6be510460229f96901f136e7c7ccf7ef"
+  }
+}

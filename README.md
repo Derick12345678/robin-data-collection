@@ -4,15 +4,42 @@ Team scaffold for reproducible dark-web research collection with Robin and a san
 
 ## Current status
 
-**Working now:** an offline JSON import pipeline, conservative URL normalization,
-exact content deduplication across batches, preservation of query/source matches,
-baseline redaction, keyed identifiers, SQLite storage, candidate CSV exports,
-quality reports, synthetic tests, and GitHub Actions CI.
+**Setup and pilot complete:** pinned Robin deployment, Docker/Tor/MCP diagnostics,
+validated collection limits, and one controlled metadata-only search. The pilot
+returned 20 capped entries with partial engine coverage; only aggregate evidence
+was retained. See [verified pilot results and handoff](docs/pilot-results.md).
 
-**Next milestone:** connect the runner to a pinned Robin MCP server. The live
-adapter is deliberately unimplemented; the scaffold does not contact search
-engines, start Tor, or automatically run live searches. Query configuration is a
-team planning template and is not yet consumed by the offline import command.
+**Dataset work remains:** connect live observations to the pipeline, implement the
+approved sanitization and source-observation rules, assess relevance, run the agreed
+query batch, and review/export the sanitized CSV. The existing offline importer
+produces candidate CSVs from supplied JSON; it is not yet a full collection adapter.
+The baseline sanitizer does not meet every rule in the approved scope.
+
+Live searching occurs only through the explicit pilot command or direct Robin use;
+CI uses synthetic/configuration checks. The main query registry remains disabled.
+
+## Robin installation
+
+Robin v3.1 is pinned by immutable Docker digest in `compose.yaml`, with release
+provenance in `deploy/robin.lock.json`. Follow [the setup guide](docs/robin-setup.md)
+for WSL or Windows commands, local credentials, persistent storage, and verification.
+The pinned environment is separate from the unimplemented live collection adapter.
+Run `python scripts/robin.py health` for local Docker/Tor/MCP diagnostics, or add
+`--check-engines` for bounded engine availability probes. See [health checks](docs/health-checks.md).
+
+## Collection limits
+
+Run `python scripts/robin.py limits` to validate and inspect the approved limits
+without contacting Robin. The reusable guards cap results, page attempts, text,
+retries, and operation time; [collection limits](docs/collection-limits.md) explains
+accounting and the remaining live-adapter integration. Queries remain disabled.
+
+## Controlled pilot
+
+`python scripts/pilot.py` prints a no-network plan. Add `--run` to explicitly dispatch
+one approved metadata-only query in a disposable container and save an aggregate
+report. See [the controlled pilot guide](docs/controlled-pilot.md) for limits, cleanup,
+and the distinction between this transport test and the analytical dataset.
 
 ## Quick start (WSL/Linux, Python 3.11+)
 
