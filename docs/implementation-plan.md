@@ -10,8 +10,10 @@ Installation and diagnostic substeps are implemented: pinned deployment; strict
 bootstrap evidence; Docker, UI, and MCP checks; optional two-worker engine probes.
 Collection-limit policy validation and reusable enforcement guards are implemented
 and synthetically tested; see `docs/collection-limits.md`. Wiring those guards into
-the live adapter, model configuration, dates, and a controlled pilot query remain
-outstanding. See `docs/health-checks.md` for diagnostics.
+the full live adapter, model configuration, and production collection dates remain
+outstanding. A metadata-only controlled pilot is implemented and successfully run;
+see `docs/controlled-pilot.md`. Relevance and analysis-ready exports are not part
+of that transport test. See `docs/health-checks.md` for diagnostics.
 
 - Approve research domain, inclusion/exclusion criteria, languages, collection dates,
   and 10â€“20 queries in the versioned registry.

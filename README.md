@@ -30,6 +30,13 @@ without contacting Robin. The reusable guards cap results, page attempts, text,
 retries, and operation time; [collection limits](docs/collection-limits.md) explains
 accounting and the remaining live-adapter integration. Queries remain disabled.
 
+## Controlled pilot
+
+`python scripts/pilot.py` prints a no-network plan. Add `--run` to explicitly dispatch
+one approved metadata-only query in a disposable container and save an aggregate
+report. See [the controlled pilot guide](docs/controlled-pilot.md) for limits, cleanup,
+and the distinction between this transport test and the analytical dataset.
+
 ## Quick start (WSL/Linux, Python 3.11+)
 
 ```bash
