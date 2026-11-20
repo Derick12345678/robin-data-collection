@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 import types
 
 
@@ -48,24 +49,32 @@ def search_status(text, stats):
     raise ValueError("Search status and coverage disagree")
 
 
-def server_source(stats_path, cap, aggregate_source):
+def server_source(stats_path, cap, aggregate_source, deadline_path=None):
+    deadline_path = deadline_path or Path(stats_path).with_name("operation-deadline")
     return (
-    "import anyio,json,search,mcp_server; from requests.adapters import HTTPAdapter; "
-    "original=search.get_tor_session; "
-    "search.ENGINE_TIMEOUT=(3,5)\n"
-    "def session():\n"
-    " s=original()\n"
-    " s.mount('http://',HTTPAdapter(max_retries=0))\n"
-    " s.mount('https://',HTTPAdapter(max_retries=0))\n"
-    " return s\n"
-    "search.get_tor_session=session\n"
-    + aggregate_source + "\n"
-    "def observed(query,threads):\n"
-    " outcome=search.get_search_results_detailed(query,max_workers=threads)\n"
-    " with open(" + repr(str(stats_path)) + ",'w') as stream: json.dump(aggregate(outcome," + str(cap) + "),stream)\n"
-    " return outcome\n"
-    "anyio.run(mcp_server.build_server(search_fn=observed).run_stdio_async)"
-)
+        "import anyio,json,os,signal,time,search,mcp_server; from pathlib import Path; from requests.adapters import HTTPAdapter\n"
+        "signal.signal(signal.SIGALRM, lambda *_: os._exit(124))\n"
+        "original=search.get_tor_session\n"
+        "search.ENGINE_TIMEOUT=(3,5)\n"
+        "def session():\n"
+        " s=original()\n"
+        " s.mount('http://',HTTPAdapter(max_retries=0))\n"
+        " s.mount('https://',HTTPAdapter(max_retries=0))\n"
+        " return s\n"
+        "search.get_tor_session=session\n"
+        + aggregate_source + "\n"
+        "def observed(query,threads):\n"
+        " remaining=float(Path(" + repr(str(deadline_path)) + ").read_text())-time.monotonic()\n"
+        " if remaining<=0: os._exit(124)\n"
+        " signal.setitimer(signal.ITIMER_REAL,remaining)\n"
+        " try:\n"
+        "  outcome=search.get_search_results_detailed(query,max_workers=threads)\n"
+        "  with open(" + repr(str(stats_path)) + ",'w') as stream: json.dump(aggregate(outcome," + str(cap) + "),stream)\n"
+        "  return outcome\n"
+        " finally:\n"
+        "  signal.setitimer(signal.ITIMER_REAL,0)\n"
+        "anyio.run(mcp_server.build_server(search_fn=observed).run_stdio_async)"
+    )
 
 
 async def run(request):
@@ -80,11 +89,12 @@ async def run(request):
     with tempfile.TemporaryDirectory() as temporary:
         path = Path(temporary)
         policy_path, stats_path = path / "policy.json", path / "stats.json"
+        deadline_path = path / "operation-deadline"
         policy_path.write_text(json.dumps(config))
         policy = module.load_policy(policy_path)
         executor = module.LimitedExecutor(policy)
         # Adapter instrumentation writes only numeric coverage, never source material.
-        server_code = server_source(stats_path, policy.limits.results_per_query, request["aggregate_source"])
+        server_code = server_source(stats_path, policy.limits.results_per_query, request["aggregate_source"], deadline_path)
         params = StdioServerParameters(command=sys.executable, args=["-c", server_code], env=dict(os.environ))
         with open(os.devnull, "w") as errors:
             async with stdio_client(params, errlog=errors) as (reader, writer):
@@ -97,6 +107,11 @@ async def run(request):
                     stats = None
                     async def callback(remaining):
                         nonlocal result_status, stats
+                        # Share the exact absolute monotonic deadline with the server.
+                        # Its SIGALRM watchdog kills the process and all worker threads;
+                        # MCP cancellation/graceful shutdown cannot extend source activity.
+                        deadline = time.monotonic() + remaining
+                        deadline_path.write_text(str(deadline))
                         response = await session.call_tool("robin_search", {
                             "query": query["text"], **policy.search_parameters(),
                             "preset": "threat_intel", "user_chose": True,

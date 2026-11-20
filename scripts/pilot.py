@@ -68,8 +68,8 @@ def main():
                      "--entrypoint", "python3", lock["image"], "-c", payload], timeout=20)
             report["research_search_attempted"] = True
             report["research_search_performed"] = None
-            # Always destroy the dedicated container after the call; this is the remote
-            # cancellation boundary and prevents background requests outliving a timeout.
+            # The server watchdog enforces the dispatched search deadline. This
+            # larger host budget covers setup/reporting; container removal is final cleanup.
             result = subprocess.run([docker, "start", "--attach", "--interactive", name],
                                     input=json.dumps(request), text=True, encoding="utf-8",
                                     capture_output=True, timeout=110, check=False)

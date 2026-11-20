@@ -36,10 +36,17 @@ waits are tightened to 3/5 seconds and HTTP retries are disabled in this isolate
 search process. These are stricter than the approved maximums and do not change
 the running UI's settings. Tight waits may reduce coverage on slow onion services.
 
-The dispatched operation has the approved 90-second deadline. The outer container
-budget is 110 seconds to allow MCP initialization/cleanup. On every exit the parent
-force-removes the entire disposable container, which terminates remote work rather
-than merely cancelling an MCP client. Cleanup must be confirmed before a run is
+The dispatched operation has the approved 90-second deadline, shortened when the
+collection window ends earlier. Immediately before the MCP search call, the client
+writes an absolute monotonic deadline shared with the server. Before starting source
+requests, the server arms a POSIX real-time watchdog for that deadline. On expiry,
+it exits the entire server process (including blocking worker threads), bypassing
+MCP shutdown grace. An already expired deadline starts no source work. Successful
+source work disarms the watchdog before normal response/cleanup.
+
+The outer container budget remains 110 seconds for MCP initialization/reporting and
+cleanup; it does not extend the source-request deadline. On every exit the parent
+force-removes the entire disposable container as a final cleanup boundary. Cleanup must be confirmed before a run is
 reported successful. A timeout is recorded as incomplete, with an unknown result
 count; it must never be reported as a successful empty search.
 
