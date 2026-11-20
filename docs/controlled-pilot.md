@@ -2,7 +2,8 @@
 
 The pilot verifies live MCP search transport and source-result metadata shape.
 It does not assess relevance, verify organizational exposure claims, fetch result
-pages, or produce the analytical dataset.
+pages, or produce the analytical dataset. See [verified results and handoff](pilot-results.md)
+for the completed run, six-step checklist, and remaining dataset work.
 
 ## Commands
 

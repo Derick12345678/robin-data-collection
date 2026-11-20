@@ -1,5 +1,13 @@
 # Implementation plan and team work packages
 
+## Status and phase boundary
+
+The six-step installation-and-pilot checklist is complete and documented in
+[pilot results](pilot-results.md). It is distinct from the full dataset lifecycle
+below. A controlled search returned aggregate metadata only; no live findings CSV
+has been produced. Complete the remaining adapter, sanitization, relevance,
+deduplication, batch, and review/export work before calling data collection complete.
+
 ## Milestone 0 â€” scaffold (implemented)
 Offline pipeline, synthetic fixtures, SQLite provenance, exact deduplication,
 baseline sanitization, candidate CSV/quality report, tests, CI, and contribution guidance.
