@@ -57,6 +57,26 @@ class PipelineTests(unittest.TestCase):
             _, report = process(source, base / "db.sqlite", base / "out", KEY)
             self.assertEqual(report["unique_count"], 2)
 
+    def test_identical_text_from_different_sources_stays_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            rows = json.loads(FIXTURE.read_text())[:1]
+            rows.append({**rows[0], "url": "http://another.invalid/post/1"})
+            source = base / "input.json"
+            source.write_text(json.dumps(rows))
+            _, report = process(source, base / "db.sqlite", base / "out", KEY)
+            self.assertEqual(report["unique_count"], 2)
+
+    def test_legacy_content_only_database_is_not_silently_mixed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            db = base / "db.sqlite"
+            process(FIXTURE, db, base / "out", KEY, "one")
+            with sqlite3.connect(db) as connection:
+                connection.execute("DELETE FROM metadata WHERE key='observation_identity_version'")
+            with self.assertRaises(ValueError):
+                process(FIXTURE, db, base / "out", KEY, "two")
+
     def test_invalid_batch_does_not_create_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

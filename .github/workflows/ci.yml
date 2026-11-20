@@ -25,3 +25,4 @@ jobs:
       - run: python scripts/robin.py prepare
       - run: python scripts/robin.py config
       - run: python scripts/robin.py limits
+      - run: python scripts/collect.py plan --pilot

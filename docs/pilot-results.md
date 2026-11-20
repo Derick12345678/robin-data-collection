@@ -100,6 +100,13 @@ A model was unnecessary for this transport test; model-dependent filtering and
 refinement still require a selected, approved configuration. Production collection
 dates are not set, and this completed pilot window does not authorize recurring runs.
 
+## Subsequent implementation status
+
+The [live collection guide](live-collection.md) now documents the completed
+structured metadata adapter milestone. The remaining-work table below records the
+handoff state at the initial aggregate-only pilot; consult the live guide for
+current implementation and validation status.
+
 ## Remaining work for the dataset deliverable
 
 | Work package | Required output | Completion evidence |

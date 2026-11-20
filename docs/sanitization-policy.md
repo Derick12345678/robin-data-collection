@@ -23,3 +23,13 @@ in a controlled review log; never treat renaming a CSV as evidence of review.
 
 Changing the key breaks cross-batch matching. Keep it out of Git and outputs. HMAC
 IDs are pseudonyms and should still be handled as potentially sensitive metadata.
+
+## Live structured-only policy
+
+The live adapter uses `organizational-exposure-1-structured-only`, described in
+[live collection](live-collection.md). It withholds all original free text and
+source locators, returns finite templates and keyed pseudonyms, and leaves unknown
+entities explicit. This is stronger minimization with less analytical detail; it
+is separate from the legacy baseline regex importer. Only known private aliases
+are resolved to organization pseudonyms. No NER completeness or approved-release
+claim is made. Raw-source persistence and final approved exports are disabled.

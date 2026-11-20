@@ -19,7 +19,15 @@ SQLite contains sanitized text and keyed IDs, not raw source URLs or raw content
 Input JSON remains the operator's responsibility. HMAC identifiers are pseudonymous,
 not anonymous. Use filesystem permissions and a controlled retention policy.
 
-## Proposed Robin adapter
+## Structured live adapter (implemented)
+
+See [live collection](live-collection.md). The search-only adapter transforms source
+metadata inside a disposable pinned container, then persists only allowlisted
+sanitized records and durable attempt state. Original content and source locators
+never enter the host database. Per-run snapshots and append-only review events
+preserve auditability. The server watchdog enforces the shared operation deadline.
+
+## Remaining Robin integration scope
 Use the pinned upstream MCP server's health/search/filter/scrape tools. Confirm
 actual tool schemas for that release. Preserve original/refined query text in a
 restricted run manifest, engine health, rejection reasons, truncation indicators,

@@ -13,14 +13,8 @@ LOCK = ROOT / "deploy" / "robin.lock.json"
 LOCAL_ENV = ROOT / "deploy" / "robin.env"
 
 
-def docker_binary():
-    candidate = shutil.which("docker")
-    if candidate:
-        return candidate
-    desktop = Path("C:/Program Files/Docker/Docker/resources/bin/docker.exe")
-    if os.name == "nt" and desktop.is_file():
-        return str(desktop)
-    raise RuntimeError("Docker not found. Start Docker Desktop and enable your WSL distro integration.")
+sys.path.insert(0, str(ROOT / "src"))
+from robin_collect.deployment import docker_binary, project_path
 
 
 def call(args):
@@ -81,7 +75,7 @@ def main():
             return call([docker, "run", "--rm", "--network", "none", "--entrypoint", "python3", image, "-c", code])
         if not LOCAL_ENV.is_file():
             raise RuntimeError("Run python scripts/robin.py prepare first.")
-        compose = [docker, "compose", "--project-directory", str(ROOT), "-f", str(ROOT / "compose.yaml")]
+        compose = [docker, "compose", "--project-directory", project_path(ROOT, docker), "-f", project_path(ROOT / "compose.yaml", docker)]
         actions = {
             "config": ["config", "--quiet"],
             "pull": ["--profile", "ui", "--profile", "mcp", "pull"],

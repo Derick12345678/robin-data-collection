@@ -1,4 +1,4 @@
-"""File adapter contract; live Robin integration is intentionally a separate milestone."""
+"""Offline input and bounded, structured-only live collection adapters."""
 import json
 from pathlib import Path
 from typing import Protocol
@@ -9,11 +9,24 @@ class Collector(Protocol):
 
 
 class RobinMCPCollector:
-    def collect(self, query: dict) -> list[dict]:
-        raise NotImplementedError(
-            "Live adapter pending: configure a pinned Robin MCP server, inspect its "
-            "tool schemas, then implement health/search/filter/scrape with checkpointing."
-        )
+    """Search-only live adapter; context is required to prevent unbounded calls."""
+    def __init__(self, root=None, transport=None):
+        if transport is None:
+            from .live_adapter import MCPDockerTransport
+            transport=MCPDockerTransport(root or Path(__file__).resolve().parents[2])
+        self.transport=transport
+
+    def health(self):
+        return self.transport.health()
+
+    def cleanup(self, name):
+        return self.transport.cleanup(name)
+
+    def collect(self, query: dict, context=None):
+        if context is None:
+            raise ValueError("A reserved run attempt and validated policy are required")
+        from .observations import validate_outcome
+        return validate_outcome(self.transport.collect(query,context),context['config']['limits']['results_per_query'],query['id'])
 
 
 def load_observations(path: Path) -> list[dict]:

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "robin-data-collection"
-version = "0.1.0"
-description = "Team scaffold for reproducible Robin result collection and sanitized CSV preparation"
+version = "0.2.0"
+description = "Bounded Robin metadata collection, sanitized observations, and review workflows"
 requires-python = ">=3.11"
 dependencies = []
 

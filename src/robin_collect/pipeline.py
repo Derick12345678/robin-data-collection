@@ -46,7 +46,7 @@ def process(input_path: Path, db_path: Path, output_dir: Path, key: str, run_id=
         if not (title or snippet):
             raise ValueError("Observation has no usable plain text")
         content = json.dumps([normalize_text(row["title"]), normalize_text(row["snippet"])], ensure_ascii=False)
-        prepared.append((digest(key, "finding", content), digest(key, "source", url),
+        prepared.append((digest(key, "source-observation-v2", url + "\0" + content), digest(key, "source", url),
                          row["query_id"], collected, title, snippet,
                          ";".join(sorted(set(title_types + snippet_types)))))
     run_id = run_id or str(uuid.uuid4())
@@ -55,6 +55,12 @@ def process(input_path: Path, db_path: Path, output_dir: Path, key: str, run_id=
     connection = connect(db_path)
     try:
         with connection:
+            identity_version = connection.execute("SELECT value FROM metadata WHERE key='observation_identity_version'").fetchone()
+            if identity_version is None and connection.execute("SELECT COUNT(*) FROM findings").fetchone()[0]:
+                raise ValueError("Legacy content-only observations require a fresh database or an explicit migration")
+            if identity_version and identity_version[0] != '2':
+                raise ValueError("Unsupported observation identity version")
+            connection.execute("INSERT OR IGNORE INTO metadata VALUES ('observation_identity_version','2')")
             fingerprint = digest(key, "key-check", "robin-data-collection")
             previous = connection.execute("SELECT value FROM metadata WHERE key='key_fingerprint'").fetchone()
             if previous and previous[0] != fingerprint:
