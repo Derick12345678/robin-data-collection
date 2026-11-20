@@ -23,7 +23,7 @@ The command prints JSON and returns a machine-readable exit code.
 
 The probe starts a temporary MCP subprocess inside the existing UI container and
 reuses its Tor daemon and configured bootstrap-log path. It does not start a new
-container or Tor circuit, load saved investigations, or change global MCP settings.
+container or Tor daemon, load saved investigations, or change global MCP settings.
 It tests an actual stdio MCP session, not a direct call to the Python health function.
 It does not validate an external MCP host's client configuration.
 
