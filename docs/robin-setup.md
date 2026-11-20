@@ -68,6 +68,8 @@ WSL; this Windows fallback manages Docker only.
   entrypoint bypassed. Checks release source hashes, imports, Tor, and non-root UID.
   It starts no Tor process, searches, or model calls.
 - `up`: starts only the UI service. Tor starts inside it and needs time to bootstrap.
+- `health`: checks Docker, UI, strict Tor readiness, and MCP; optionally add
+  `--check-engines`. See [health checks](health-checks.md).
 - `status`: shows project container status.
 - `logs`: displays recent UI startup logs. Treat logs as potentially sensitive after use.
 - `down`: stops/removes the project services while preserving saved investigations.
@@ -119,6 +121,6 @@ provides artifact identity; it is not a claim that the image has no vulnerabilit
 
 ## Completion boundary
 Installation is complete when Compose validates and the offline image check passes.
-UI startup is a separate smoke check. Tor/search-engine health diagnostics, a model
+UI startup is a separate smoke check. Health diagnostics are available via `health`. A model
 choice, approved collection dates, the live adapter, and a controlled test query
 remain later steps; no research collection is performed by installation.

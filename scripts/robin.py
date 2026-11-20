@@ -40,13 +40,21 @@ def prepare():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["prepare", "config", "pull", "verify", "up", "status", "logs", "down", "mcp"])
+    parser.add_argument("action", choices=["prepare", "config", "pull", "verify", "up", "status", "logs", "down", "mcp", "health"])
+    parser.add_argument("--check-engines", action="store_true", help="Probe engine HTTP availability through Tor; health only")
     args = parser.parse_args()
+    if args.check_engines and args.action != "health":
+        parser.error("--check-engines is only valid with health")
     if args.action == "prepare":
         prepare()
         return 0
     try:
         docker = docker_binary()
+        if args.action == "health":
+            from robin_health import diagnose
+            report = diagnose(ROOT, docker, args.check_engines)
+            print(json.dumps(report, indent=2))
+            return report["exit_code"]
         lock = json.loads(LOCK.read_text(encoding="utf-8"))
         image = lock["image"]
         if args.action == "verify":
@@ -76,6 +84,9 @@ def main():
         }
         return call(compose + actions[args.action])
     except RuntimeError as exc:
+        if args.action == "health":
+            print(json.dumps({"status": "unavailable", "code": "docker_cli_unavailable", "exit_code": 1}))
+            return 1
         print(str(exc), file=sys.stderr)
         return 2
     except subprocess.CalledProcessError as exc:

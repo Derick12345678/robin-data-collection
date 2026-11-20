@@ -20,6 +20,8 @@ Robin v3.1 is pinned by immutable Docker digest in `compose.yaml`, with release
 provenance in `deploy/robin.lock.json`. Follow [the setup guide](docs/robin-setup.md)
 for WSL or Windows commands, local credentials, persistent storage, and verification.
 The pinned environment is separate from the unimplemented live collection adapter.
+Run `python scripts/robin.py health` for local Docker/Tor/MCP diagnostics, or add
+`--check-engines` for bounded engine availability probes. See [health checks](docs/health-checks.md).
 
 ## Quick start (WSL/Linux, Python 3.11+)
 

@@ -7,6 +7,7 @@ x-robin-common: &robin-common
     - ./deploy/robin.env
   environment:
     STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    ROBIN_TOR_LOG: /home/robin/tor-notices.log
   volumes:
     - investigations:/app/investigations
   extra_hosts:

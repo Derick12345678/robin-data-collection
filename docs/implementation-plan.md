@@ -6,6 +6,11 @@ baseline sanitization, candidate CSV/quality report, tests, CI, and contribution
 
 ## Milestone 1 â€” scope and Robin setup
 Owner: collection lead, reviewed by research lead.
+Installation and diagnostic substeps are implemented: pinned deployment; strict
+bootstrap evidence; Docker, UI, and MCP checks; optional two-worker engine probes.
+Collection-limit enforcement, model configuration, dates, and a controlled pilot
+query remain outstanding. See `docs/health-checks.md`.
+
 - Approve research domain, inclusion/exclusion criteria, languages, collection dates,
   and 10â€“20 queries in the versioned registry.
 - Pin a verified Robin image/release and inspect its MCP schemas.
