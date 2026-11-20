@@ -1,26 +1,133 @@
 {
-  "version": "1.0",
-  "research_domain": "SET_BY_TEAM_BEFORE_LIVE_COLLECTION",
+  "version": "1.1",
+  "status": "approved",
+  "research_domain": "Dark-web claims of organizational data exposure",
   "scope": {
-    "include": [],
-    "exclude": [],
-    "languages": [
-      "en"
+    "research_questions": [
+      "What types of organizational data exposure are advertised or discussed?",
+      "Which sectors and broad geographic regions are mentioned?",
+      "What evidence do sources claim to offer, without collecting exposed records?",
+      "Which claims recur across sources and which materially change over time?"
+    ],
+    "claim_handling": "Treat source statements as unverified claims; do not infer breach authenticity or dark-web prevalence.",
+    "include": [
+      "Explicit claims of an organizational breach or exposed organizational dataset.",
+      "Advertisements claiming sale or distribution of organizational information.",
+      "Related discussion with enough context to classify the alleged exposure."
+    ],
+    "exclude": [
+      "Generic advertising, unrelated discussion, and claims too vague to classify.",
+      "Repeated observations without meaningful content changes; preserve query matches and collection history.",
+      "Exposed datasets, sample records, credentials, downloadable archives, and attachments.",
+      "Sources requiring account creation, payment, or interaction with source operators."
+    ],
+    "rejection_reasons": [
+      "unrelated", "generic_advertising", "insufficient_context", "duplicate_observation",
+      "out_of_date", "unsupported_language", "disallowed_content", "access_requires_interaction"
+    ],
+    "languages": ["en"],
+    "source_types": [
+      "forum_post", "marketplace_listing", "leak_site_announcement", "related_discussion"
+    ],
+    "source_access": "Text-based results and accessible pages discoverable through Robin.",
+    "collection_dates": {
+      "mode": "single_pilot_batch",
+      "window_days": 7,
+      "start_date_utc": null,
+      "end_date_utc": null,
+      "date_setup": "Set explicit start and end dates before collection; the seven-day window is a scheduling allowance, not recurring collection.",
+      "publication_lookback_days": 90,
+      "publication_reference": "collection_window_start",
+      "undated_findings": "Retain relevant undated findings with publication date unknown.",
+      "timestamp_policy": "Record UTC collection timestamps separately from source-claimed publication dates."
+    },
+    "page_collection": {
+      "strategy": "titles_and_snippets_first",
+      "fetch_when": "Title and snippet cannot establish relevance or support the research fields.",
+      "direct_result_page_only": true,
+      "recursive_crawling": false,
+      "allowed_content": "plain_text_extracted_from_text_or_html",
+      "excluded_content": ["attachments", "images", "archives", "linked_datasets", "sample_records", "credentials"],
+      "truncation_policy": "Mark truncated content explicitly; do not infer that missing text was absent from the source."
+    },
+    "observation": {
+      "row_definition": "One distinct source item and its materially distinct content.",
+      "multiple_query_matches": "Keep one observation with associations to every matching query.",
+      "meaningful_change": "Create a new observation for a changed claim, exposure description, or substantive status update at the same URL.",
+      "nonmeaningful_change": "Formatting changes and repeated retrievals update history without creating a finding.",
+      "cross_source_claims": "Keep separate source observations; optionally associate them with an incident-group identifier.",
+      "near_duplicates": "Flag for review rather than automatically merging."
+    },
+    "limitations": [
+      "Documents discoverable claims and their evolution; does not verify breaches or exposed-data authenticity.",
+      "English-only queries and unavailable sources limit coverage.",
+      "Search results are not a representative sample of the entire dark web."
     ]
   },
   "limits": {
-    "results_per_query": 25,
+    "results_per_query": 20,
     "pages_per_query": 10,
+    "pages_per_batch": 30,
     "page_characters": 10000,
+    "page_text_bytes": 100000,
     "concurrency": 2,
     "timeout_seconds": 90,
-    "max_retries": 2
+    "max_retries": 2,
+    "limit_policy": "Enforce every applicable limit; stop extracted text at whichever byte or character cap is reached first."
+  },
+  "sanitization": {
+    "policy_version": "organizational-exposure-1",
+    "implementation_status": "Proposed requirements; the current baseline sanitizer does not enforce all of these rules.",
+    "apply_to": ["titles", "snippets", "page_text", "urls", "query_text", "logs"],
+    "remove": [
+      "personal_names", "personal_email_addresses", "phone_numbers", "precise_residential_addresses",
+      "government_identifiers", "financial_account_details", "credentials", "tokens", "other_secrets",
+      "exposed_personal_records"
+    ],
+    "pseudonymize": ["organization_names", "source_handles", "source_locations"],
+    "pseudonym_method": "keyed_hmac",
+    "key_storage": "Store separately from source control, datasets, and logs; reuse the key for authorized longitudinal matching.",
+    "retain": ["sector", "country_or_broad_region", "source_category", "claimed_exposure_type"],
+    "raw_urls": "Default to no persistence. If retracing is necessary, use restricted provenance storage with the same retention limit as raw content.",
+    "export_source_details": "Export a source pseudonym; include a sanitized URL only if necessary and reviewed for residual identifiers.",
+    "unsanitized_retention_days": 7,
+    "retention_clock": "collection_time",
+    "unsanitized_storage": "Restricted temporary storage only; delete no later than seven days after collection.",
+    "spreadsheet_formula_defense": true,
+    "record_redaction_categories": true,
+    "review": "Review relevance, near duplicates, and residual sensitive information before distributing the dataset."
+  },
+  "dataset": {
+    "proposed_fields": [
+      "observation_id", "source_pseudonym", "source_type", "title_sanitized", "summary_sanitized",
+      "research_category", "organization_pseudonym", "sector", "broad_geography", "claimed_exposure_type",
+      "source_claimed_publication_date", "first_collected_at_utc", "last_collected_at_utc", "query_ids",
+      "run_id", "duplicate_group_id", "incident_group_id", "truncated", "redaction_categories"
+    ],
+    "schema_status": "Proposed analytical fields; this configuration does not change the implemented CSV schema."
+  },
+  "query_management": {
+    "refinement_policy": "Record original and Robin-refined queries; review refinements for preserved meaning during the pilot.",
+    "freeze_policy": "Freeze reviewed queries and settings for the pilot; version subsequent changes.",
+    "review_example": "An announcement claiming an organizational database exposure can qualify; a generic marketplace advertisement without a specific exposure claim does not.",
+    "expected_effect": "Retrieve claim-level metadata and summaries while excluding exposed records and downloads.",
+    "enablement": "Scope and queries approved by the project owner on 2026-11-20. Queries remain disabled until the live collection adapter is complete and collection dates are set."
   },
   "queries": [
-    {
-      "id": "q001",
-      "text": "synthetic research example",
-      "enabled": false
-    }
+    {"id": "q001", "text": "organizational data breach announcement", "category": "breach_claim", "language": "en", "enabled": false},
+    {"id": "q002", "text": "company database exposure claim", "category": "exposure_claim", "language": "en", "enabled": false},
+    {"id": "q003", "text": "corporate data leak announcement", "category": "exposure_claim", "language": "en", "enabled": false},
+    {"id": "q004", "text": "organization stolen data sale announcement", "category": "sale_claim", "language": "en", "enabled": false},
+    {"id": "q005", "text": "business database sale listing", "category": "sale_claim", "language": "en", "enabled": false},
+    {"id": "q006", "text": "company data leak discussion", "category": "related_discussion", "language": "en", "enabled": false},
+    {"id": "q007", "text": "organizational breach claim update", "category": "claim_update", "language": "en", "enabled": false},
+    {"id": "q008", "text": "corporate data leak claim evidence description", "category": "claimed_evidence", "language": "en", "enabled": false},
+    {"id": "q009", "text": "healthcare organization data breach announcement", "category": "healthcare", "language": "en", "enabled": false},
+    {"id": "q010", "text": "financial services company data leak announcement", "category": "financial_services", "language": "en", "enabled": false},
+    {"id": "q011", "text": "education institution data exposure announcement", "category": "education", "language": "en", "enabled": false},
+    {"id": "q012", "text": "retail company database breach claim", "category": "retail", "language": "en", "enabled": false},
+    {"id": "q013", "text": "manufacturing company data leak claim", "category": "manufacturing", "language": "en", "enabled": false},
+    {"id": "q014", "text": "technology company data exposure claim", "category": "technology", "language": "en", "enabled": false},
+    {"id": "q015", "text": "public sector organization data breach announcement", "category": "public_sector", "language": "en", "enabled": false}
   ]
 }
