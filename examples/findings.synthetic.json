@@ -1,0 +1,23 @@
+[
+  {
+    "query_id": "q001",
+    "url": "http://example.invalid/post/1?utm_source=test",
+    "title": "Synthetic research notice",
+    "snippet": "Contact analyst@example.invalid. password=FAKE_TEST_VALUE",
+    "collected_at_utc": "2026-11-20T12:00:00Z"
+  },
+  {
+    "query_id": "q002",
+    "url": "http://example.invalid/post/1#section",
+    "title": "Synthetic research notice",
+    "snippet": "Contact analyst@example.invalid. password=FAKE_TEST_VALUE",
+    "collected_at_utc": "2026-11-20T12:01:00Z"
+  },
+  {
+    "query_id": "q001",
+    "url": "http://example.invalid/post/2",
+    "title": "=1+1",
+    "snippet": "<p>Entirely synthetic content for testing.</p><script>hidden</script>",
+    "collected_at_utc": "2026-11-20T12:02:00Z"
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "research_domain": "SET_BY_TEAM_BEFORE_LIVE_COLLECTION",
+  "scope": {
+    "include": [],
+    "exclude": [],
+    "languages": [
+      "en"
+    ]
+  },
+  "limits": {
+    "results_per_query": 25,
+    "pages_per_query": 10,
+    "page_characters": 10000,
+    "concurrency": 2,
+    "timeout_seconds": 90,
+    "max_retries": 2
+  },
+  "queries": [
+    {
+      "id": "q001",
+      "text": "synthetic research example",
+      "enabled": false
+    }
+  ]
+}
