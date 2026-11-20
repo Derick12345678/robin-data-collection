@@ -24,3 +24,4 @@ jobs:
           python-version: '3.11'
       - run: python scripts/robin.py prepare
       - run: python scripts/robin.py config
+      - run: python scripts/robin.py limits

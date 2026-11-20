@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "status": "approved",
   "research_domain": "Dark-web claims of organizational data exposure",
   "scope": {
@@ -73,6 +73,10 @@
     "concurrency": 2,
     "timeout_seconds": 90,
     "max_retries": 2,
+    "retry_backoff_initial_seconds": 2,
+    "retry_backoff_max_seconds": 10,
+    "page_budget_counts": "attempts_including_failures_and_retries",
+    "timeout_scope": "operation_including_retries_and_backoff",
     "limit_policy": "Enforce every applicable limit; stop extracted text at whichever byte or character cap is reached first."
   },
   "sanitization": {

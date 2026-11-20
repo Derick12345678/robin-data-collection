@@ -23,6 +23,13 @@ The pinned environment is separate from the unimplemented live collection adapte
 Run `python scripts/robin.py health` for local Docker/Tor/MCP diagnostics, or add
 `--check-engines` for bounded engine availability probes. See [health checks](docs/health-checks.md).
 
+## Collection limits
+
+Run `python scripts/robin.py limits` to validate and inspect the approved limits
+without contacting Robin. The reusable guards cap results, page attempts, text,
+retries, and operation time; [collection limits](docs/collection-limits.md) explains
+accounting and the remaining live-adapter integration. Queries remain disabled.
+
 ## Quick start (WSL/Linux, Python 3.11+)
 
 ```bash

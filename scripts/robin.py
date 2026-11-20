@@ -40,11 +40,20 @@ def prepare():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["prepare", "config", "pull", "verify", "up", "status", "logs", "down", "mcp", "health"])
+    parser.add_argument("action", choices=["prepare", "config", "pull", "verify", "up", "status", "logs", "down", "mcp", "health", "limits"])
     parser.add_argument("--check-engines", action="store_true", help="Probe engine HTTP availability through Tor; health only")
     args = parser.parse_args()
     if args.check_engines and args.action != "health":
         parser.error("--check-engines is only valid with health")
+    if args.action == "limits":
+        sys.path.insert(0, str(ROOT / "src"))
+        from robin_collect.limits import load_policy, PolicyError
+        try:
+            print(json.dumps(load_policy(ROOT / "config/queries.json").summary(), indent=2))
+            return 0
+        except (OSError, PolicyError):
+            print("Collection policy invalid; inspect config/queries.json.", file=sys.stderr)
+            return 2
     if args.action == "prepare":
         prepare()
         return 0

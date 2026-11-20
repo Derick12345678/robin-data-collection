@@ -8,8 +8,10 @@ baseline sanitization, candidate CSV/quality report, tests, CI, and contribution
 Owner: collection lead, reviewed by research lead.
 Installation and diagnostic substeps are implemented: pinned deployment; strict
 bootstrap evidence; Docker, UI, and MCP checks; optional two-worker engine probes.
-Collection-limit enforcement, model configuration, dates, and a controlled pilot
-query remain outstanding. See `docs/health-checks.md`.
+Collection-limit policy validation and reusable enforcement guards are implemented
+and synthetically tested; see `docs/collection-limits.md`. Wiring those guards into
+the live adapter, model configuration, dates, and a controlled pilot query remain
+outstanding. See `docs/health-checks.md` for diagnostics.
 
 - Approve research domain, inclusion/exclusion criteria, languages, collection dates,
   and 10â€“20 queries in the versioned registry.
