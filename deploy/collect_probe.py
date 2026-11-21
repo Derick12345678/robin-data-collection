@@ -19,7 +19,7 @@ async def run(request):
         package = directory / "robin_collect"
         package.mkdir()
         for filename, source in request["modules"].items():
-            if filename not in {"__init__.py","normalize.py","sanitize.py","observations.py","limits.py"}:
+            if filename not in {"__init__.py","normalize.py","sanitize.py","observations.py","limits.py","enrichment.py"}:
                 raise ValueError("Unexpected module")
             (package / filename).write_text(source)
         sys.path.insert(0, str(directory))
@@ -41,7 +41,12 @@ async def run(request):
         aggregate_source += "def aggregate(outcome,cap):\n"
         aggregate_source += " result=base_aggregate(outcome,cap)\n"
         aggregate_source += " records,invalid=capture_observations(outcome['results'][:cap]," + repr(query['id']) + ",Path(" + repr(str(key_path)) + ").read_text()," + repr(policy.start.isoformat()) + ",json.loads(Path(" + repr(str(entities_path)) + ").read_text())," + str(request['config']['scope']['collection_dates']['publication_lookback_days']) + ")\n"
-        aggregate_source += " result.update(observations=records,invalid_locator_count=invalid)\n return result\n"
+        aggregate_source += " events=[]; contexts=[]\n"
+        if request.get('page_tokens'):
+            aggregate_source += " from robin_collect.enrichment import enrich_results\n"
+            arguments=["outcome['results'][:cap]","records",repr(query['id']),"Path("+repr(str(key_path))+").read_text()",repr(policy.start.isoformat()),"json.loads(Path("+repr(str(entities_path))+").read_text())",str(request['config']['scope']['collection_dates']['publication_lookback_days']),repr(request['page_tokens']),repr(request['config']['limits']),"float(Path("+repr(str(deadline_path))+").read_text())",repr(request['run_id']),"search.get_tor_session()"]
+            aggregate_source += " records,events,contexts=enrich_results("+','.join(arguments)+")\n"
+        aggregate_source += " result.update(observations=records,invalid_locator_count=invalid,page_events=events,_review_contexts=contexts)\n return result\n"
         code = helpers['server_source'](stats_path, policy.limits.results_per_query, aggregate_source, deadline_path)
         params = StdioServerParameters(command=sys.executable,args=["-c",code],env={**os.environ,"PYTHONPATH":str(directory)})
         with open(os.devnull, "w") as errors:
@@ -72,7 +77,7 @@ async def run(request):
                     await LimitedExecutor(policy).search(query['id'],callback)
                     if captured['returned_count'] and not captured['observations']:
                         return {'status':'failed','code':'all_locators_invalid','observations':[], 'returned_count':captured['returned_count']}
-                    return {**captured,'status':status,'page_fetch_attempts':0,'model_calls':0}
+                    return {**captured,'status':status,'page_fetch_attempts':len(captured.get('page_events',[])),'model_calls':0}
 
 
 if __name__=='__main__':

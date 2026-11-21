@@ -22,11 +22,15 @@ class RobinMCPCollector:
     def cleanup(self, name):
         return self.transport.cleanup(name)
 
+    def review_ready(self):return self.transport.review_ready()
+
+    def publish_contexts(self):return self.transport.publish_contexts()
+
     def collect(self, query: dict, context=None):
         if context is None:
             raise ValueError("A reserved run attempt and validated policy are required")
         from .observations import validate_outcome
-        return validate_outcome(self.transport.collect(query,context),context['config']['limits']['results_per_query'],query['id'])
+        return validate_outcome(self.transport.collect(query,context),context['config']['limits']['results_per_query'],query['id'],context.get('page_tokens',[]))
 
 
 def load_observations(path: Path) -> list[dict]:

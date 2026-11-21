@@ -4,21 +4,19 @@ Team scaffold for reproducible dark-web research collection with Robin and a san
 
 ## Current status
 
-**Working now:** pinned Robin deployment, strict Docker/Tor/MCP diagnostics, validated
-limits, and a live metadata adapter producing durable sanitized observations,
-provenance, manifests, and review artifacts. A controlled live run saved 10 records;
-all need review because the returned metadata provided insufficient context.
+**Working now:** pinned Robin/Tor diagnostics, resumable metadata collection,
+conditional bounded direct-page retrieval, temporary local source-context review,
+and a review-gated sanitized CSV release bundle. Read the
+[live collection guide](docs/live-collection.md) for execution and team review.
 
-**Privacy default:** original titles, excerpts, and URLs are withheld. Records use
-keyed pseudonyms and finite structured fields. Known organization aliases can be
-pseudonymized; unknown entities remain unknown. Read the
-[live collection guide](docs/live-collection.md) before retaining real observations.
+**Privacy default:** durable records withhold source free text and URLs. Source
+context lives in a separate private local memory session for at most 24 hours.
+Two actual reviewers must agree before an observation can enter an approved CSV.
+Review IDs are self-reported; independence is a team responsibility.
 
-**Dataset work remains:** assess source context/relevance, configure the agreed
-query batch and dates, and validate/approve the final sanitized CSV. The review
-artifacts are not release-approved datasets. The main query registry stays disabled.
-The [initial pilot handoff](docs/pilot-results.md) describes the earlier aggregate-only
-phase; the live guide documents the current adapter milestone.
+**Dataset status:** collection artifacts remain unapproved until reviewed. A frozen
+private policy enables one dated batch; the tracked query registry stays disabled.
+The [initial pilot handoff](docs/pilot-results.md) documents an earlier transport test.
 
 ## Robin installation
 
@@ -44,7 +42,7 @@ one approved metadata-only query in a disposable container and save an aggregate
 report. See [the controlled pilot guide](docs/controlled-pilot.md) for limits, cleanup,
 and the distinction between this transport test and the analytical dataset.
 
-## Live metadata workflow
+## Live collection workflow
 
 ```bash
 python3 scripts/collect.py prepare
@@ -92,6 +90,9 @@ src/robin_collect/
   collection.py                 Durable collection/recovery and artifacts
   collection_store.py           Run, attempt, snapshot, and review storage
   observations.py               Structured-only privacy and source identity
+  enrichment.py                 Bounded direct-page text and research hints
+  review.py / review_server.py   Local expiring source-context review
+  release.py                    Reviewed CSV, dictionary, and audit bundle
   cli.py                        Offline import command
   normalize.py                  Text and URL normalization
   sanitize.py                   Baseline redaction and spreadsheet formula defense
@@ -119,11 +120,11 @@ See [Contributing](CONTRIBUTING.md), [architecture](docs/architecture.md),
 
 ## Dataset review
 
-All exported records are `pending_review`. The exporter creates a **candidate**,
-not an approval or guarantee of anonymization. Regex rules do not reliably find
-names, physical addresses, all secrets, or contextual identifiers. Review relevance,
-near duplicates, and residual sensitive information before distributing a dataset.
-Raw URLs are replaced with HMAC source IDs in exports. Query text is not exported.
+Live review artifacts remain unapproved. The release command requires two
+consistent, distinct source-context reviews for included observations and blocks
+unresolved records by default. It produces a CSV, dictionary, quality report, and
+manifest after the gate passes. See [the review and release instructions](docs/live-collection.md).
+The offline synthetic importer still creates candidate CSVs only.
 
 ## Upstream
 

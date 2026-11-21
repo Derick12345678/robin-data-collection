@@ -149,7 +149,8 @@ SAFE_KEYS = {
 
 
 def validate_observation(record, query_id):
-    if not isinstance(record,dict) or set(record)!=SAFE_KEYS or record['query_id']!=query_id:
+    optional={'metadata_parent_id','evidence_id','context_receipt','context_expires_at_utc','page_status','page_truncated','raw_response_bytes','extracted_characters','extracted_bytes','sector','broad_geography','claimed_exposure_type'}
+    if not isinstance(record,dict) or not SAFE_KEYS<=set(record) or not set(record)<=SAFE_KEYS|optional or record['query_id']!=query_id:
         raise ValueError('Invalid observation contract')
     for name in ['observation_id','source_pseudonym','content_pseudonym']:
         if not isinstance(record[name],str) or not re.fullmatch(r'[0-9a-f]{64}',record[name]):raise ValueError('Invalid pseudonym')
@@ -162,10 +163,10 @@ def validate_observation(record, query_id):
     if not isinstance(organizations,list) or any(not isinstance(x,str) or not re.fullmatch(r'[0-9a-f]{64}',x) for x in organizations):raise ValueError('Unsafe organization field')
     allowed={
         'organization_detection':{'registry_match','unknown'},'research_category':{'database','customer_data','organizational_data','unknown'},
-        'source_type':{'unknown'},'language':{'unknown'},'relevance_decision':{'candidate','rejected','needs_review'},
+        'source_type':{'unknown','forum_post','marketplace_listing','leak_site_announcement','related_discussion'},'language':{'unknown'},'relevance_decision':{'candidate','rejected','needs_review'},
         'relevance_reason':{'disallowed_content','out_of_date','publication_date_uncertain','organizational_exposure_claim_unverified','generic_advertising','insufficient_context'},
         'publication_date_status':{'known','unknown','uncertain'},'review_status':{'pending_review'},
-        'privacy_mode':{'structured_only'},'policy_version':{POLICY_VERSION},'source_capture':{'before_mcp_listing_truncation'},
+        'privacy_mode':{'structured_only'},'policy_version':{POLICY_VERSION},'source_capture':{'before_mcp_listing_truncation','direct_result_page'},
     }
     for name,values in allowed.items():
         if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Invalid structured field')
@@ -178,10 +179,26 @@ def validate_observation(record, query_id):
         value=record[name]
         if value is None and name=='source_claimed_publication_date':continue
         if not isinstance(value,str) or datetime.fromisoformat(value).tzinfo is None:raise ValueError('Invalid timestamp')
+    if 'page_status' in record:
+        from .enrichment import PAGE_STATUSES,SECTORS,REGIONS,EXPOSURES,RAW_RESPONSE_BYTES
+        if not isinstance(record['page_status'],str) or record['page_status'] not in PAGE_STATUSES:raise ValueError('Invalid page status')
+        if record['page_status']=='ok':
+            needed=optional-{'page_status'}
+            if not needed<=set(record):raise ValueError('Incomplete page evidence')
+            for name in ['metadata_parent_id','evidence_id','context_receipt']:
+                if not isinstance(record[name],str) or not re.fullmatch(r'[0-9a-f]{64}',record[name]):raise ValueError('Invalid evidence pseudonym')
+            if not isinstance(record['context_expires_at_utc'],str) or datetime.fromisoformat(record['context_expires_at_utc']).tzinfo is None:raise ValueError('Invalid context expiry')
+            for name,high in [('raw_response_bytes',RAW_RESPONSE_BYTES),('extracted_characters',10000),('extracted_bytes',100000)]:
+                if type(record[name]) is not int or not 0<=record[name]<=high:raise ValueError('Page bound exceeded')
+            if type(record['page_truncated']) is not bool:raise ValueError('Unsafe truncation flag')
+            for name,values in [('sector',SECTORS),('broad_geography',REGIONS),('claimed_exposure_type',EXPOSURES)]:
+                if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Unsafe taxonomy')
+        elif set(record)!=SAFE_KEYS|{'page_status'}:raise ValueError('Unbound failed-page evidence')
+    elif set(record)!=SAFE_KEYS:raise ValueError('Unbound page evidence')
     return record
 
 
-def validate_outcome(outcome, cap, query_id):
+def validate_outcome(outcome, cap, query_id, page_tokens=None):
     if not isinstance(outcome,dict):raise ValueError('Invalid adapter outcome')
     status=outcome.get('status')
     if not isinstance(status,str) or status not in {'completed','no_results','engines_unreachable','timed_out','failed'}:raise ValueError('Invalid outcome status')
@@ -207,6 +224,19 @@ def validate_outcome(outcome, cap, query_id):
         if name in outcome:
             if type(outcome[name]) is not int or outcome[name]<0:raise ValueError('Invalid count')
             result[name]=outcome[name]
-    if result.get('page_fetch_attempts',0)!=0 or result.get('model_calls',0)!=0:raise ValueError('Metadata-only contract violated')
+    tokens=set(page_tokens or [])
+    events=outcome.get('page_events',[])
+    if not isinstance(events,list) or len(events)>len(tokens):raise ValueError('Unreserved page attempts')
+    used=set()
+    for event in events:
+        from .enrichment import PAGE_STATUSES,RAW_RESPONSE_BYTES
+        if not isinstance(event,dict) or set(event)!={'token','source_pseudonym','status','reason','wire_bytes','truncated'}:raise ValueError('Unsafe page event')
+        if not isinstance(event['token'],str) or event['token'] not in tokens or event['token'] in used:raise ValueError('Invalid page token')
+        used.add(event['token'])
+        if not isinstance(event['source_pseudonym'],str) or not re.fullmatch(r'[0-9a-f]{64}',event['source_pseudonym']) or event['source_pseudonym'] not in {r['source_pseudonym'] for r in records}:raise ValueError('Unbound page source')
+        if not isinstance(event['status'],str) or event['status'] not in PAGE_STATUSES or not isinstance(event['reason'],str) or event['reason'] not in {'insufficient_relevance','missing_research_fields'} or type(event['wire_bytes']) is not int or not 0<=event['wire_bytes']<=RAW_RESPONSE_BYTES or type(event['truncated']) is not bool:raise ValueError('Invalid page event')
+    if result.get('page_fetch_attempts',0)!=len(events) or result.get('model_calls',0)!=0:raise ValueError('Capture contract violated')
+    if any('page_status' in r and r['source_pseudonym'] not in {e['source_pseudonym'] for e in events} for r in records):raise ValueError('Missing page provenance')
+    result['page_events']=events
     result['result_cap_applied']=outcome.get('result_cap_applied') is True
     return result
