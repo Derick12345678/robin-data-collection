@@ -58,9 +58,10 @@ def _run_id(value):
     return value
 
 
-def plan(root,pilot=False):
-    policy=load_policy(Path(root)/'config/queries.json')
-    config=json.loads((Path(root)/'config/queries.json').read_text())
+def plan(root,pilot=False,policy_path=None):
+    path=Path(policy_path) if policy_path else Path(root)/'config/queries.json'
+    policy=load_policy(path)
+    config=json.loads(path.read_text())
     if pilot:
         chosen=next(q for q in config['queries'] if q['id']=='q001')
         if len(chosen['text'].split())>5 or re.search(r'\b(?:AND|OR|NOT)\b',chosen['text']):raise PolicyError('Pilot query requires reviewed short refinement')
@@ -75,35 +76,92 @@ def plan(root,pilot=False):
         'privacy_mode':'structured_only','dataset_approval':'not_approved'}
 
 
-def collect(root,run_id=None,pilot=False,resume=False,collector=None):
+def freeze_batch_policy(root, destination=None, now=None):
+    """Freeze one approved batch; never overwrite or renew an existing policy."""
+    root=Path(root)
+    directory=prepare(root)
+    destination=Path(destination) if destination else directory/'batch-policy.json'
+    if not destination.is_absolute():destination=root/destination
+    if destination.parent.resolve()!=directory.resolve() or destination.is_symlink():
+        raise PolicyError('Batch policies must be private files directly inside data/live')
+    config=json.loads((root/'config/queries.json').read_text())
+    if config.get('status')!='approved':raise PolicyError('Approved scope required')
+    refinements={
+        'q008':'corporate leak claim evidence description',
+        'q010':'financial services company leak announcement',
+        'q015':'public sector organizational breach announcement',
+    }
+    for query in config['queries']:
+        query['original_text']=query['text']
+        query['text']=refinements.get(query['id'],query['text'])
+        query['enabled']=True
+        if len(query['text'].split())>5 or re.search(r'\b(?:AND|OR|NOT)\b',query['text']):
+            raise PolicyError('Batch query requires reviewed short refinement')
+    now=now or datetime.now(timezone.utc)
+    if now.tzinfo is None:raise PolicyError('UTC-aware batch start required')
+    config['version']='1.3-frozen-batch'
+    config['scope']['collection_dates'].update(start_date_utc=now.isoformat(),end_date_utc=(now+timedelta(hours=24)).isoformat())
+    raw=json.dumps(config,indent=2)+'\n'
+    descriptor=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(descriptor,'w',encoding='utf-8') as stream:stream.write(raw)
+    return {'status':'frozen','policy_path':str(destination),**plan(root,False,destination)}
+
+
+def freeze_validation_policy(root,destination=None):
+    root=Path(root);directory=prepare(root)
+    destination=Path(destination) if destination else directory/'validation-policy.json'
+    if not destination.is_absolute():destination=root/destination
+    if destination.parent.resolve()!=directory.resolve() or destination.is_symlink():raise PolicyError('Validation policy requires private directory')
+    config=json.loads((root/'config/queries.json').read_text())
+    for query in config['queries']:
+        query['enabled']=query['id'] in {'q001','q002','q003'}
+        query['original_text']=query['text']
+    now=datetime.now(timezone.utc)
+    config['version']='1.4-quality-validation'
+    config['scope']['collection_dates'].update(start_date_utc=now.isoformat(),end_date_utc=(now+timedelta(hours=1)).isoformat())
+    descriptor=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(descriptor,'w',encoding='utf-8') as stream:json.dump(config,stream,indent=2)
+    return {'status':'frozen',**plan(root,False,destination),'policy_path':str(destination)}
+
+
+def collect(root,run_id=None,pilot=False,resume=False,collector=None,enrich=False,policy_path=None,validation=False,validated_run=None):
     root=Path(root)
     run_id=_run_id(run_id or 'collection-'+uuid.uuid4().hex)
     directory=prepare(root)
     key=load_key(root)
     entities=entities_for(root)
     entities_hash=pseudonym(key,'entities',json.dumps(entities,sort_keys=True))
-    policy=load_policy(root/'config/queries.json')
-    config=json.loads((root/'config/queries.json').read_text())
+    path=Path(policy_path) if policy_path else root/'config/queries.json'
+    policy=load_policy(path)
+    config=json.loads(path.read_text())
+    from .quality import fingerprint,scope_fingerprint,validation_report
+    options={'scope_fingerprint':scope_fingerprint(config),'quality_validation':bool(validation),'retrieval_fingerprint':fingerprint(),'validated_run':validated_run,'enrich':bool(enrich),'pages_per_query_target':5 if pilot or validation else 2,'raw_response_bytes':1_000_000,'context_ttl_seconds':86400}
     image=json.loads((root/'deploy/robin.lock.json').read_text())['image']
     with exclusive(directory/'collection.lock'):
         store=CollectionStore(directory/'collection.sqlite',key)
         try:
             if resume:
                 metadata=store.run(run_id)
+                if store.quarantine_events(run_id):raise PolicyError('Quarantined run cannot resume')
                 if metadata['config_hash']!=policy.config_sha256 or metadata['entities_hash']!=entities_hash or metadata['image']!=image:
                     raise RuntimeError('Resume requires the original policy, entity registry, and image')
+                options=json.loads(metadata['options_json'])
                 start,end=metadata['window_start'],metadata['window_end']
                 ids=json.loads(metadata['query_ids'])
             else:
-                requested=plan(root,pilot)
+                requested=plan(root,pilot,path)
                 ids=requested['query_ids']
                 if not ids:raise PolicyError('No enabled queries')
+                if validation and (not enrich or len(ids)>3):raise PolicyError('Quality validation requires enrichment and at most three queries')
+                if len(ids)>3:
+                    if not validated_run or validation_report(store,validated_run)['status']!='passed':raise PolicyError('A reviewed relevance pilot must pass before a larger batch')
+                    if json.loads(store.run(validated_run)['options_json']).get('scope_fingerprint')!=options['scope_fingerprint']:raise PolicyError('Validation must cover the same approved scope and limits')
                 now=datetime.now(timezone.utc)
                 start=(policy.start or now).isoformat()
                 end=(policy.end or now+timedelta(hours=1)).isoformat()
                 if not pilot and policy.blockers():raise PolicyError('Configure enabled queries and collection dates')
                 queries=[q for q in config['queries'] if q['id'] in ids]
-                store.create_run(run_id,policy.config_sha256,entities_hash,start,end,queries,asdict(policy.limits),image)
+                store.create_run(run_id,policy.config_sha256,entities_hash,start,end,queries,asdict(policy.limits),image,options)
             config['scope']['collection_dates'].update(start_date_utc=start,end_date_utc=end)
             for query in config['queries']:query['enabled']=query['id'] in ids
             # Validate the effective pilot window with the same strict parser.
@@ -115,11 +173,13 @@ def collect(root,run_id=None,pilot=False,resume=False,collector=None):
             unfinished=[qid for qid in ids if store.query(run_id,qid)['state'] not in {'completed','no_results'}]
             if not unfinished:
                 return write_artifacts(root,store,run_id)
+            if options.get('retrieval_fingerprint')!=fingerprint():raise PolicyError('Unfinished runs require the original collector code')
+            if len(ids)>3 and validation_report(store,options['validated_run'])['status']!='passed':raise PolicyError('Relevance gate no longer passes')
             collector=collector or RobinMCPCollector(root)
             for attempt in store.inflight(run_id):
                 cleanup=collector.cleanup(attempt['container_name'])
                 store.recover(run_id,attempt['query_id'],attempt['attempt'],cleanup)
-            if collector.health().get('exit_code')!=0:
+            if (options.get('enrich') and not collector.review_ready()) or collector.health().get('exit_code')!=0:
                 store.finish(run_id)
                 return write_artifacts(root,store,run_id)
             for query in config['queries']:
@@ -139,8 +199,10 @@ def collect(root,run_id=None,pilot=False,resume=False,collector=None):
                     if deadline<=datetime.now(timezone.utc):break
                     if state['state']=='engines_unreachable':store.allow_retry(run_id,query['id'])
                     name='robin-capture-'+uuid.uuid4().hex
+                    if options.get('enrich') and not collector.review_ready():break
                     number=store.reserve(run_id,query['id'],1+policy.limits.max_retries,deadline.isoformat(),name)
-                    context={'container_name':name,'config':config,'key':key,'entities':entities,'operation_deadline_utc':deadline.isoformat()}
+                    tokens=store.reserve_pages(run_id,query['id'],number,options['pages_per_query_target']) if options.get('enrich') else []
+                    context={'seen_sources':store.attempted_sources(run_id),'run_id':run_id,'page_tokens':tokens,'container_name':name,'config':config,'key':key,'entities':entities,'operation_deadline_utc':deadline.isoformat()}
                     # Unexpected interruption leaves the reserved attempt in flight;
                     # resume first cleans it up and marks it uncertain, never refunds it.
                     try:
@@ -150,10 +212,20 @@ def collect(root,run_id=None,pilot=False,resume=False,collector=None):
                         cleanup=collector.cleanup(name)
                         store.complete(run_id,query['id'],number,{'status':'failed','code':'capture_failed','observations':[],'returned_count':None,'cleanup_confirmed':cleanup})
                     state=store.query(run_id,query['id'])
+                    if options.get('enrich') and state['state']=='completed':
+                        try:delivered=collector.publish_contexts()
+                        except Exception:delivered=False
+                        with store.db:
+                            saved=json.loads(state['report_json'])
+                            saved['review_context_delivery']='available' if delivered else 'failed'
+                            store.db.execute('UPDATE collection_queries SET report_json=? WHERE run_id=? AND query_id=?',(json.dumps(saved),run_id,query['id']))
                     if state['state']!='engines_unreachable' or state['attempts']>=1+policy.limits.max_retries:break
                     delay=min(policy.limits.retry_backoff_initial_seconds*2**(state['attempts']-1),policy.limits.retry_backoff_max_seconds)
                     if datetime.now(timezone.utc)+timedelta(seconds=delay)>=deadline:break
                     time.sleep(delay)
+                if store.query(run_id,query['id']).get('error_code')=='unsupported_layout':
+                    with store.db:store.db.execute("UPDATE collection_queries SET state='blocked',error_code='unsupported_layout' WHERE run_id=? AND state='pending'",(run_id,))
+                    break
             store.finish(run_id)
             return write_artifacts(root,store,run_id)
         finally:store.close()
@@ -168,7 +240,15 @@ def write_artifacts(root,store,run_id):
         'publication_dates_unknown':sum(r['publication_date_status']!='known' for r in records),
         'changed_source_candidates':sum(r['change_review']=='requires_review' for r in records),
         'near_duplicate_candidates':sum(bool(r['near_duplicate_candidates']) for r in records),
-        'review_required':True,'approved_export_available':False}
+        'review_required':True,'approved_export_available':False,'release_command_available':True,
+        'page_fetch_attempts':manifest['page_fetch_attempts'],
+        'enriched_records':sum(r.get('page_status')=='ok' for r in records),
+        'truncated_page_records':sum(r.get('page_truncated',False) for r in records),
+        'research_suitability':manifest['research_suitability'],
+        'screening_counts':{state:sum(r.get('screening_decision')==state for r in records) for state in ['eligible','defer','exclude']},
+        'source_intent_counts':{intent:sum(r.get('source_intent')==intent for r in records) for intent in ['primary_announcement','specific_dataset_listing','secondary_reporting','educational_content','service_advertisement','directory','unknown']},
+        'primary_claim_candidates':sum(r.get('screening_version')=='primary-claims-1' and r.get('screening_decision')=='eligible' for r in records),
+        'discovery_records':len(records),'finding_records':0,'source_claims_verified':False}
     directory=Path(root)/'outputs/live'/run_id
     directory.mkdir(parents=True,exist_ok=True,mode=0o700)
     for name,content in [('observations.review.jsonl',''.join(json.dumps(r,sort_keys=True)+'\n' for r in records)),('manifest.json',json.dumps(manifest,indent=2)+'\n'),('quality.json',json.dumps(quality,indent=2)+'\n')]:

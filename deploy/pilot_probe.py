@@ -69,7 +69,7 @@ def server_source(stats_path, cap, aggregate_source, deadline_path=None):
         " signal.setitimer(signal.ITIMER_REAL,remaining)\n"
         " try:\n"
         "  outcome=search.get_search_results_detailed(query,max_workers=threads)\n"
-        "  with open(" + repr(str(stats_path)) + ",'w') as stream: json.dump(aggregate(outcome," + str(cap) + "),stream)\n"
+        "  with os.fdopen(os.open(" + repr(str(stats_path)) + ",os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600),'w') as stream: json.dump(aggregate(outcome," + str(cap) + "),stream)\n"
         "  return outcome\n"
         " finally:\n"
         "  signal.setitimer(signal.ITIMER_REAL,0)\n"

@@ -1,4 +1,4 @@
-"""Pinned Docker/MCP metadata transport. No raw source data crosses this boundary."""
+"""Pinned capture transport; sanitized records and separate ephemeral review contexts."""
 from datetime import datetime, timezone
 import importlib.util
 import json
@@ -22,6 +22,7 @@ class MCPDockerTransport:
         self.docker=docker_binary()
         self.image=json.loads((self.root/'deploy/robin.lock.json').read_text(encoding='utf-8'))['image']
         self.health_module=script_module(self.root,'robin_health')
+        self.pending_contexts=[]
 
     def health(self):
         return self.health_module.diagnose(self.root,self.docker)
@@ -36,7 +37,27 @@ class MCPDockerTransport:
             return probe.returncode==0 and not probe.stdout.strip()
         except (OSError,subprocess.TimeoutExpired):return False
 
+    def review_ready(self):
+        from .review import ReviewClient
+        return ReviewClient(self.root).ready()
+
+    def publish_contexts(self):
+        from .review import ReviewClient,record_for
+        contexts=self.pending_contexts;self.pending_contexts=[]
+        if not contexts:return True
+        # Repeated same-content captures keep the run's first evidence receipt.
+        # A redundant later receipt must not prevent delivery of unrelated new pages.
+        canonical=[]
+        for context in contexts:
+            record=record_for(self.root,context['run_id'],context['observation_id'])
+            if record and record.get('context_receipt')==context['receipt']:canonical.append(context)
+        try:
+            delivered=not canonical or ReviewClient(self.root).publish(canonical).get('accepted')==len(canonical)
+            return delivered and len(canonical)==len(contexts)
+        except (OSError,ValueError,RuntimeError):return False
+
     def collect(self, query, context):
+        self.pending_contexts=[]
         name=context['container_name']
         if not re.fullmatch(r'robin-capture-[0-9a-f]{32}',name):raise ValueError('Unsafe container name')
         outcome={'status':'failed','code':'transport_failed','observations':[],'returned_count':None}
@@ -46,25 +67,29 @@ class MCPDockerTransport:
             if not re.fullmatch(r'[0-9a-f]{12,64}',ui):raise RuntimeError('UI unavailable')
             payload=(self.root/'deploy/collect_probe.py').read_text(encoding='utf-8')
             pilot_source=(self.root/'deploy/pilot_probe.py').read_text(encoding='utf-8')
-            modules={name:(self.root/'src/robin_collect'/name).read_text(encoding='utf-8') for name in ['__init__.py','normalize.py','sanitize.py','observations.py','limits.py']}
+            modules={name:(self.root/'src/robin_collect'/name).read_text(encoding='utf-8') for name in ['__init__.py','normalize.py','sanitize.py','observations.py','limits.py','enrichment.py','screening.py','retrieval.py']}
             request={'config':context['config'],'key':context['key'],'entities':context['entities'],
-                'query_id':query['id'],'operation_deadline_utc':context['operation_deadline_utc'],
+                'seen_sources':context.get('seen_sources',[]),'run_id':context.get('run_id',''),'page_tokens':context.get('page_tokens',[]),'query_id':query['id'],'operation_deadline_utc':context['operation_deadline_utc'],
                 'modules':modules,'pilot_source':pilot_source,'aggregate_source':self._aggregate_source()}
             self.health_module.capture([self.docker,'create','-i','--name',name,'--network','container:'+ui,
-                '--cap-drop','ALL','--security-opt','no-new-privileges:true','--entrypoint','python3',self.image,'-c',payload],timeout=20)
+                '--cap-drop','ALL','--security-opt','no-new-privileges:true','--log-driver','none','--tmpfs','/tmp:rw,noexec,nosuid,size=32m,mode=1777','--entrypoint','python3',self.image,'-c',payload],timeout=20)
             remaining=(datetime.fromisoformat(context['operation_deadline_utc'])-datetime.now(timezone.utc)).total_seconds()
             if remaining<=0:raise TimeoutError()
             result=subprocess.run([self.docker,'start','--attach','--interactive',name],input=json.dumps(request),text=True,encoding='utf-8',capture_output=True,timeout=remaining+20)
             if result.returncode:raise RuntimeError('Capture process failed')
             outcome=json.loads(result.stdout)
+            if not isinstance(outcome,dict):raise ValueError('Invalid capture response')
         except (TimeoutError,subprocess.TimeoutExpired):
             outcome={'status':'timed_out','code':'container_deadline','observations':[],'returned_count':None}
         except Exception:
             outcome={'status':'failed','code':'transport_failed','observations':[],'returned_count':None}
         finally:
             cleanup=self.cleanup(context['container_name'])
+        private_contexts=outcome.pop('_review_contexts',[])
         outcome['cleanup_confirmed']=cleanup
-        return validate_outcome(outcome,context['config']['limits']['results_per_query'],query['id'])
+        validated=validate_outcome(outcome,context['config']['limits']['results_per_query'],query['id'],context.get('page_tokens',[]))
+        if cleanup and validated['status']=='completed':self.pending_contexts=private_contexts
+        return validated
 
     def _aggregate_source(self):
         # Extract a trusted function from the repository, not from source pages.

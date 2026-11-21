@@ -1,167 +1,192 @@
-# Structured live collection and review
+# Bounded live collection, source review, and release
 
-## Supported milestone
-The live adapter now connects Robin MCP search to durable sanitized observations,
-query provenance, a resumable run manifest, and a quality report. This is a
-metadata-only release. It does not retrieve result pages, send model prompts,
-produce an approved dataset, or claim that an exposure is authentic.
+**Current scope:** see [primary-source claim screening](primary-claim-screening.md).
+The owner rejected the latest three readable pages; that pilot is quarantined.
+News, tutorials, and generic service offers cannot qualify as primary findings.
 
-Untrusted titles/excerpts are transformed inside the disposable container before
-anything returns to the host. The output is strictly allowlisted. Provider keys,
-source free text, raw URLs, and remote exception messages are not persisted.
 
-## Commands
-Run from the project directory:
+**Current retrieval controls:** read [quality repair and validation](retrieval-quality.md)
+first. The original full batch is quarantined. New larger batches require a passing
+human-reviewed relevance pilot, and only the verified Ahmia parser is enabled.
+
+## Implemented workflow
+The pinned Robin adapter collects search metadata and can conditionally retrieve
+bounded text from direct result pages. Durable observations contain pseudonyms,
+finite classifications, and withheld-text markers. Release requires actual human
+source-context and privacy review. Source statements remain unverified claims.
+No model is called, no recursive crawl occurs, and no source account is created.
+
+The main query registry stays disabled. A separate private frozen policy enables
+one batch with explicit dates and preserves original and shortened query wording.
+There is no scheduler or automatic renewal.
+
+## Start collection
+Run from the project directory, using Python 3.11 or newer:
 
 ```bash
 python3 scripts/collect.py prepare
-python3 scripts/collect.py plan --pilot
-python3 scripts/collect.py run --pilot --run-id my-single-query-check
-python3 scripts/collect.py resume --run-id my-single-query-check
-python3 scripts/collect.py export --run-id my-single-query-check
+# Keep this foreground process running in a separate terminal:
+python3 scripts/review.py serve --port 18601
 ```
 
-On Windows, `python scripts/collect.py ...` launches the same command inside the
-project's WSL distribution. SQLite always runs natively in WSL for a WSL checkout.
-The Docker helper can use Docker Desktop's Windows CLI via WSL interop even when
-distro integration is disabled; project paths are translated with `wslpath`.
-Direct Linux Docker remains supported. No second Docker daemon is installed.
-
-`prepare` creates a random 256-bit HMAC key under private `data/live/hmac.key`
-without printing or replacing it. Keep this key backed up in the team's secret
-manager, separate from exported records. Losing or changing it breaks matching;
-an existing database refuses a replacement key. An existing database without its
-key is not silently reinitialized. Do not copy keys into issues, PRs, or output.
-
-`plan` has no network activity. `run --pilot` enables only approved q001 in an
-effective per-run configuration. If dates are unset it uses a one-hour scheduling
-window. The tracked query registry stays unchanged. A configured batch requires
-enabled, reviewed short queries and explicit valid dates; no automatic query
-refinement or pivots occur. Query text is represented by HMACs in the manifest.
-
-## Sanitization policy
-The default `structured_only` policy withholds every untrusted free-text field,
-including identifiers that regex or named-entity recognition might miss.
-
-- Source URLs become stable keyed source pseudonyms.
-- Original titles become keyed title markers, never partial redacted originals.
-- Excerpts, if available, become `[TEXT_WITHHELD]`.
-- Summaries, categories, decisions, and reasons come only from finite templates.
-- Known organizations can be matched against a private exact-alias registry and
-  replaced by stable organization pseudonyms. Unknown organizations are marked
-  unknown, not guessed.
-- Missing snippets, dates, source type, and language remain explicit unknowns.
-- Dates, booleans, counters, keys, and structured values are validated before storage.
-
-This provides strong data minimization, with reduced analytical detail. It is not
-a claim that every entity has been detected. No original title or source locator
-can be recovered from a review file. Ambiguous records need a separately approved
-source-context review workflow; changing a label cannot recreate missing evidence.
-
-Optional private alias configuration: create `data/live/entities.json` with mode
-0600, mapping canonical organization names to aliases. See the entirely synthetic
-[example](../examples/entities.synthetic.json). The registry is never exported or
-committed, and its keyed fingerprint is frozen per run. Entity-registry changes
-require a new run; prior sanitized snapshots remain unchanged.
-
-Regex categories can identify some emails, phone-like strings, IPv4-like values,
-and labelled secrets. All other unstructured information is still withheld. This
-also covers unknown personal names, addresses, government/financial identifiers,
-source handles, and exposed sample records without attempting to retain them.
-There is no temporary raw-source storage to expire; container files hold only
-sanitized output and temporary configuration/key material and are removed on exit.
-Any future raw review store must implement the approved seven-day retention limit.
-
-## Observation identity
-A source pseudonym uses the conservatively normalized full source URL, captured
-before MCP listing truncation. An observation ID combines that source with the
-normalized original title/excerpt under HMAC.
-
-- Identical text at two source URLs produces two observations.
-- The same source/content across queries or runs reuses the observation identity
-  and keeps each query match and collection timestamp.
-- Changed source content creates a new observation and a change-review flag.
-- Formatting normalization collapses simple HTML/whitespace variants.
-- Equal content across sources and high keyed-token overlap become review candidates,
-  never automatic incident merges. The current overlap threshold is 0.8; it is a
-  heuristic and is not semantic evidence of a meaningful change.
-
-Keyed similarity tokens stay internal to SQLite and are omitted from review files.
-Per-run sanitized capture snapshots prevent later alias or policy processing from
-rewriting earlier capture fields. Global history timestamps, change flags, and
-duplicate-review candidates may evolve as later observations arrive. Global first/last observation timestamps are accompanied by the
-run's own collection timestamp and query associations.
-
-## Durable execution and recovery
-`data/live/collection.sqlite` records run configuration/versions, query states,
-charged attempts, safe per-attempt coverage, observations, matches, and review events.
-A nonblocking OS lock prevents competing controllers from operating on this store.
-
-Attempts are committed before container creation. Retries never reset a query's
-90-second operation deadline or the collection window. Only a confirmed all-engine
-outage is automatically retried, within the configured two-retry limit and shared
-backoff budget. Unknown errors, malformed responses, and timeouts are not blindly
-retried. Engine-level HTTP retries are disabled in the capture process.
-
-The already-tested server-side watchdog stops blocking source workers at the
-operation deadline. The parent removes the complete disposable container afterward.
-An unconfirmed cleanup prevents committing observations. On resume, outstanding
-containers are removed first. An interrupted attempt is marked uncertain and its
-budget remains consumed; it is not automatically replayed. Completed queries are
-skipped, while unstarted queries can proceed within the frozen policy/window.
-Failed cleanup can be retried on subsequent resume without refunding the attempt.
-
-Each attempt has a unique, validated container name; cleanup cannot target the
-existing ROBIN container or the project UI. The capture container shares only the
-UI's network namespace for Tor. It mounts no host directories, investigation
-volumes, provider credentials, or Docker socket. No temporary MCP IDs are persisted.
-
-## Review and artifacts
-Outputs under `outputs/live/<run-id>/` are ignored by Git:
-- `observations.review.jsonl`: sanitized structured records, including rejected and
-  uncertain observations so exclusion decisions can be audited.
-- `manifest.json`: policy/image/version fingerprints, query/attempt states, engine
-  counters, deadlines, cleanup evidence, and query pseudonyms.
-- `quality.json`: decision, missing-field, change, duplicate, and review counts.
-
-Record a metadata review with an opaque reviewer ID and finite reason code:
+Then, in another terminal:
 
 ```bash
-python3 scripts/collect.py review --run-id my-single-query-check \
-  --observation-id OBSERVATION_HASH --decision needs_review \
-  --reason requires_source_review --reviewer reviewer01
+python3 scripts/collect.py plan --pilot
+python3 scripts/collect.py run --pilot --enrich --run-id my-enriched-pilot
+# After checking the pilot, freeze and dispatch a single batch:
+python3 scripts/collect.py batch-policy
+python3 scripts/collect.py plan --policy data/live/batch-policy.json
+python3 scripts/collect.py run --enrich --policy data/live/batch-policy.json --run-id my-batch
+python3 scripts/collect.py status --run-id my-batch
 ```
 
-Decisions: `candidate`, `rejected`, `needs_review`. Supported reasons:
-`insufficient_context`, `unrelated`, `generic_advertising`, `out_of_date`,
-`disallowed_content`, `requires_source_review`, `consistent_with_scope`.
-Every review appends an event; review history is scoped to its run. A review does
-not approve release. Every artifact remains `not_approved`; no approved-export
-command is exposed in this milestone. Uncertain records cannot be promoted by a
-silent automatic rule.
+These are execution instructions, not a request to repeat the already completed
+project validation runs. A batch policy is created exclusively with mode 0600
+inside private `data/live` and never overwritten. Its window lasts 24 hours, within
+the approved seven-day scheduling allowance. q008, q010, and q015 use deterministic
+shortened phrases with their intent preserved. The original/refined query HMACs
+are separate; the private policy keeps both original strings. Other queries are
+unchanged. A new scope or subsequent collection needs its own reviewed policy.
 
-The legacy `robin-collect --input ...` command remains an offline candidate CSV
-importer using baseline redaction. Do not use it to bypass the live privacy policy.
-Its source-scoped identity is version 2; a legacy populated content-only database
-requires an explicit migration or a fresh database path. Existing data is preserved,
-not deleted or silently mixed.
+On Windows, use `python scripts/collect.py ...` and `python scripts/review.py ...`.
+The scripts launch native WSL Python for a WSL checkout, keeping SQLite off the UNC
+filesystem protocol. Docker Desktop's CLI is available through WSL interop; native
+Linux Docker is also supported.
 
-## Validation and limitations
-Synthetic tests cover privacy, separate-source identity, changes, duplicate flags,
-retries/shared deadlines, interruption/resume, budget preservation, cleanup failure,
-locking, key/policy drift, immutable snapshots, and append-only review history.
-A network-disabled test through real MCP verified that raw synthetic source values
-never escaped capture and two sources remained distinct.
+`prepare` creates and preserves a private random HMAC key. Keep its backup in the
+team's secret manager, separate from datasets. An existing database requires its
+original key. Never put keys, tokens, local databases, or generated outputs in Git.
+An optional mode-0600 `data/live/entities.json` holds known organization aliases;
+see [the synthetic example](../examples/entities.synthetic.json).
 
-The controlled live validation `live-validation-20261120-01` completed with one
-charged attempt and confirmed cleanup. Sixteen engines were queried: three returned
-links, three empty responses, ten failures. Robin reported 27 raw links, 20 after
-deduplication, and 10 after its source-host/result selection. Ten sanitized records
-were persisted, all `needs_review` for insufficient context; every snippet and
-publication date was unavailable. A completed-run resume kept the attempt count at
-one, without a second search.
+## Bounds and recovery
+The approved limits remain: 20 results per query, 10 page attempts per query,
+30 page attempts per batch, 10,000 extracted characters, 100,000 UTF-8 extracted
+bytes, concurrency two, and 90 seconds per query operation including retries and
+backoff. The implementation targets five pages for an enriched pilot and two per
+query for a full batch. Actual attempts may be fewer.
 
-This validates safe technical capture, not collection relevance or sufficient
-analytical coverage. Broader collection, optional page retrieval, richer retained
-text, entity resolution beyond known aliases, model selection, and release-approved
-CSV export remain subsequent work. The main query registry remains disabled.
+Every page slot is reserved durably before dispatch. Failed fetches count. Confirmed
+unused reservations can be released; interrupted or uncertain attempts stay charged.
+Retries share the original deadline and batch budget. Only a confirmed all-engine
+outage is automatically retried, at most twice. Engine-level HTTP retries are
+disabled. Search selection can return fewer than the configured result ceiling.
+
+Direct page retrieval permits only HTTP(S) v3 onion result URLs and text/plain or
+text/html. Redirects, attachments, compression, obvious download/sample paths, and
+exposed-record patterns are refused. Each response reads at most 1 MB before text
+extraction, then applies both extracted-text limits. Truncation is explicit. HTML
+scripts, styles, images, and linked resources are not executed or fetched. These
+checks reduce accidental collection; they are not a complete semantic classifier.
+
+A server-side watchdog stops all source workers at the operation deadline. Each
+capture uses a disposable container sharing only the project's Tor network
+namespace, without host mounts, Docker socket, provider credentials, or elevated
+capabilities. Docker logging is disabled. Temporary capture files use RAM-backed
+`/tmp` and mode 0600. Container cleanup must be confirmed before observations are
+committed. Capture cleanup never targets the existing ROBIN or project UI containers.
+
+```bash
+python3 scripts/collect.py resume --policy data/live/batch-policy.json --run-id my-batch
+```
+
+Resume requires the original policy, entity registry, and pinned image. It cleans
+up outstanding capture containers and preserves charged uncertain work. Completed
+queries are skipped; unstarted queries can proceed inside the original window.
+Completed-run resume does not perform another search. Do not silently renew an
+expired policy to replay incomplete work.
+
+## Private source-context review
+Sanitized SQLite records and normal artifacts never store original titles, source
+text, or raw URLs. Raw source text is baseline-redacted and bounded before entering
+the separate temporary local review channel. Unknown personal names and contextual
+identifiers can remain in that private context; it is not a distributable dataset.
+
+The review service holds contexts only in memory for 24 hours from retrieval,
+shorter than the approved seven-day ceiling. Expiry removes them; process exit or
+restart loses them immediately. The capture tmpfs disappears with its container.
+No raw-context host files or browser localStorage are used. Review publication
+failure is reported, and the missing evidence blocks inclusion. Do not restart the
+service during collection or before your team has finished reviewing its contexts.
+
+```bash
+python3 scripts/review.py access
+```
+
+This prints a private loopback URL with a session token. Open it locally, enter the
+run ID, and inspect the bounded source context and sanitized record/duplicate flags.
+The token is removed from the address bar. Keep the URL out of messages, issues,
+and logs. A currently running service started before the structured-record panel
+was added can use `outputs/live/<run-id>/observations.review.jsonl` alongside the UI
+for its duplicate/change flags; restarting would discard that session's contexts.
+
+The server binds 127.0.0.1 and uses token authentication, exact Host checks, same-origin
+POST checks, a restrictive content policy, text-only rendering, no request logs,
+and no-store responses. Its owner-only Unix socket receives contexts from capture.
+It is intended for the local workstation, not network deployment or public hosting.
+A team's second reviewer must review on that workstation or through an independently
+approved secure access arrangement; do not expose the port publicly.
+
+For inclusion, reviewers must check relevance, residual privacy risk, duplicates,
+source category, English language, and the source-claimed publication date or its
+absence. Known dates must fit the 90-day lookback. Enter an organization name only
+when it occurs in context; only its keyed pseudonym is saved. Taxonomy hints are
+unverified suggestions. Unknown sector/region can remain unknown. Missing context
+cannot be replaced by changing a label.
+
+Two distinct actual reviewers must submit consistent include decisions for the
+same evidence receipt. Reviewer IDs are self-reported audit labels, not verified
+identities. The software cannot establish reviewer independence. Disagreement or a
+new uncertainty blocks release; a rejection excludes the record. Each decision is
+append-only. Review is blocked while the collection writer is active.
+
+The legacy CLI `review` action only annotates metadata; it does not count as a
+source-context release approval. Neither plan approval nor automated classification
+counts as a human record review.
+
+## Release and artifacts
+Ignored `outputs/live/<run-id>/` contains sanitized review JSONL, a run manifest,
+and quality counters. The manifest records query/attempt states, pinned image,
+versions, fingerprints, coverage, cleanup, page ledger, and review-context delivery.
+Near-duplicate candidates stay separate pending human judgment; different URLs
+remain separate source observations. Enrichment links its metadata parent without
+creating a false material-change flag. Per-run safe snapshots preserve capture fields.
+
+After actual record reviews:
+
+```bash
+python3 scripts/collect.py release --run-id my-batch
+```
+
+Each call creates an immutable bundle in `outputs/releases/<run-id>/release-<id>/`:
+
+- `DATA_DICTIONARY.md`: exact CSV fields, missing-value conventions, and limitations.
+- `manifest.json`: frozen collection provenance and append-only review audit.
+- `quality.json`: eligible, rejected, pending, incomplete, and release status.
+- `findings_sanitized.csv`: created only if the review gate passes.
+
+The default blocks CSV creation while records or queries remain unresolved. Explicit
+`--allow-partial` can export a nonempty eligible subset with exclusions recorded;
+it never converts an entirely unreviewed batch into an empty approved dataset.
+The CSV uses UTF-8, standard quoting, formula-prefix defense, pseudonyms, finite
+reviewed fields, a finite summary, SHA-256, and a read-back row-count check. No
+original titles, summaries, URLs, reviewer organization strings, or source records
+are released. An all-rejected resolved run can legitimately produce a header-only
+CSV. Do not fabricate relevant findings to increase yield.
+
+The offline synthetic importer remains a separate candidate exporter and must not
+be used to bypass this release gate. Its source-scoped identity is version two;
+legacy populated content-only databases need explicit migration or a fresh path.
+
+## Evidence and limits
+The earlier metadata validation saved 10 insufficient-context records. The enriched
+pilot `enriched-pilot-01` saved nine observations, attempted five direct pages,
+and captured three page texts with confirmed cleanup and review-context delivery.
+All remained unapproved. Synthetic tests verify capture bounds, source identity,
+recovery, shared budgets, authenticated review, context expiry, and CSV release gating.
+
+Engine failures, missing pages, query/host selection, English-only searching,
+limited page budgets, and unavailable source dates restrict coverage. Search
+results are not a representative dark-web sample. Human review classifies source
+statements; it does not establish breach authenticity or prevalence.

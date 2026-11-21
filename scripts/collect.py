@@ -21,9 +21,14 @@ def main():
     from robin_collect.collection import prepare,load_key,plan,collect,write_artifacts,exclusive
     from robin_collect.collection_store import CollectionStore
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['prepare','plan','run','resume','export','review'])
+    parser.add_argument('action',choices=['prepare','plan','run','resume','export','review','release','status','batch-policy','validation-policy','quality-status','quarantine'])
     parser.add_argument('--run-id')
     parser.add_argument('--pilot',action='store_true')
+    parser.add_argument('--validation',action='store_true')
+    parser.add_argument('--validated-run')
+    parser.add_argument('--enrich',action='store_true')
+    parser.add_argument('--allow-partial',action='store_true')
+    parser.add_argument('--policy',type=Path)
     parser.add_argument('--observation-id')
     parser.add_argument('--decision',choices=['candidate','rejected','needs_review'])
     parser.add_argument('--reason')
@@ -32,10 +37,38 @@ def main():
     try:
         if args.action=='prepare':
             prepare(ROOT);result={'status':'prepared','key_printed':False}
-        elif args.action=='plan':result=plan(ROOT,args.pilot)
+        elif args.action=='validation-policy':
+            from robin_collect.collection import freeze_validation_policy
+            result=freeze_validation_policy(ROOT,args.policy)
+        elif args.action in {'quality-status','quarantine'}:
+            if not args.run_id:parser.error('quality-status/quarantine requires --run-id')
+            from robin_collect.quality import validation_report
+            with exclusive(ROOT/'data/live/collection.lock'):
+                store=CollectionStore(ROOT/'data/live/collection.sqlite',load_key(ROOT))
+                try:
+                    if args.action=='quarantine':
+                        store.quarantine(args.run_id);result=write_artifacts(ROOT,store,args.run_id)
+                    else:result=validation_report(store,args.run_id)
+                finally:store.close()
+        elif args.action=='batch-policy':
+            from robin_collect.collection import freeze_batch_policy
+            result=freeze_batch_policy(ROOT,args.policy)
+        elif args.action=='plan':result=plan(ROOT,args.pilot,args.policy)
+        elif args.action=='release':
+            if not args.run_id:parser.error('release requires --run-id')
+            from robin_collect.release import release_bundle
+            result=release_bundle(ROOT,args.run_id,args.allow_partial)
+        elif args.action=='status':
+            if not args.run_id:parser.error('status requires --run-id')
+            path=(ROOT/'data/live/collection.sqlite').resolve()
+            db=sqlite3.connect(path.as_uri()+'?mode=ro',uri=True);db.row_factory=sqlite3.Row
+            try:
+                rows=[dict(row) for row in db.execute('SELECT query_id,state,attempts FROM collection_queries WHERE run_id=? ORDER BY query_id',(args.run_id,))]
+                result={'run_id':args.run_id,'queries':rows,'observations':db.execute('SELECT COUNT(DISTINCT observation_id) FROM observation_matches WHERE run_id=?',(args.run_id,)).fetchone()[0]}
+            finally:db.close()
         elif args.action in {'run','resume'}:
             if args.action=='resume' and not args.run_id:parser.error('resume requires --run-id')
-            result=collect(ROOT,args.run_id,args.pilot,args.action=='resume')
+            result=collect(ROOT,args.run_id,args.pilot,args.action=='resume',enrich=args.enrich,policy_path=args.policy,validation=args.validation,validated_run=args.validated_run)
         else:
             if not args.run_id:parser.error('export/review requires --run-id')
             from robin_collect.collection import _run_id
@@ -49,7 +82,7 @@ def main():
                     result=write_artifacts(ROOT,store,args.run_id)
                 finally:store.close()
         print(json.dumps(result,indent=2))
-        return 0 if result.get('status') not in {'needs_attention'} else 1
+        return 0 if result.get('status') not in {'needs_attention','blocked_pending_review','blocked_quarantined','blocked_quality_validation'} else 1
     except (OSError,ValueError,RuntimeError,subprocess.SubprocessError,sqlite3.Error):
         parser.exit(2,'Collection stopped. Inspect the sanitized manifest, policy, private key permissions, and Docker health; raw exception text is suppressed.\n')
 

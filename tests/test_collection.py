@@ -28,13 +28,13 @@ class FakeCollector:
         self.calls.append((query['id'],context['operation_deadline_utc']))
         if len(self.calls)==self.interrupt_at:raise KeyboardInterrupt('synthetic interruption')
         if len(self.calls)<=self.outages:return {'status':'engines_unreachable','coverage':coverage(0,0,16,0),'returned_count':0,'observations':[],'cleanup_confirmed':True}
-        row=observation({'title':'Northwind company customer database breach Alice Smith alice@example.invalid','link':URL},query['id'],context['key'],datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(context['config']['scope']['collection_dates']['start_date_utc']),context['entities'])
+        row=observation({'title':'We obtained Northwind company customer database records Alice Smith alice@example.invalid','link':URL},query['id'],context['key'],datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(context['config']['scope']['collection_dates']['start_date_utc']),context['entities'])
         return {'status':'completed','coverage':coverage(),'returned_count':1,'observations':[row],'cleanup_confirmed':self.cleaned,'page_fetch_attempts':0,'model_calls':0}
 
 
 class PrivacyTests(unittest.TestCase):
     def row(self,**changes):
-        source={'title':'Northwind company database breach Alice Smith alice@example.invalid','snippet':'SSN 123-45-6789, 123 Main Street, token=synthetic-secret','link':URL,**changes}
+        source={'title':'We obtained Northwind company database records Alice Smith alice@example.invalid','snippet':'SSN 123-45-6789, 123 Main Street, token=synthetic-secret','link':URL,**changes}
         return observation(source,'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.now(timezone.utc),{'Northwind':['Northwind']})
     def test_every_unstructured_field_is_withheld_and_entities_are_stable(self):
         row=self.row();encoded=json.dumps(row)
@@ -47,9 +47,9 @@ class PrivacyTests(unittest.TestCase):
         one=self.row();two=self.row(link=URL.replace('/1','/2'))
         self.assertNotEqual(one['observation_id'],two['observation_id'])
         self.assertEqual(one['content_pseudonym'],two['content_pseudonym'])
-        changed=self.row(title='Northwind company database breach update')
+        changed=self.row(title='We obtained Northwind company database records update')
         self.assertNotEqual(one['observation_id'],changed['observation_id'])
-        formatting=self.row(title='  Northwind   company database breach Alice Smith alice@example.invalid  ')
+        formatting=self.row(title='  We   obtained Northwind company database records Alice Smith alice@example.invalid  ')
         self.assertEqual(one['observation_id'],formatting['observation_id'])
     def test_unsafe_expansion_or_arbitrary_title_is_rejected(self):
         for field,value in [('title_sanitized','Alice Smith'),('extra','raw text'),('relevance_reason','secret source title'),('relevance_reason',[]),('title_sanitized',{}),('redaction_categories',[[]])]:
@@ -77,6 +77,56 @@ class CollectionTests(unittest.TestCase):
     def tearDown(self):self.temporary.cleanup()
     def write_config(self):(self.root/'config/queries.json').write_text(json.dumps(self.config))
     def store(self):return CollectionStore(self.root/'data/live/collection.sqlite',KEY)
+    def test_enrichment_history_is_shared_and_repeated_query_matches_reuse_evidence(self):
+        from robin_collect.enrichment import enrich_results
+        from test_enrichment import Session,LIMITS
+        import time
+        class EnrichedCollector(FakeCollector):
+            def review_ready(self):return True
+            def publish_contexts(self):return True
+            def collect(inner,query,context):
+                raw={'title':'We obtained Northwind company customer database records claim','link':URL}
+                now=datetime.now(timezone.utc)
+                base=observation(raw,query['id'],context['key'],now.isoformat(),now)
+                session=Session()
+                rows,events,_=enrich_results([raw],[base],query['id'],context['key'],now.isoformat(),{},90,context['page_tokens'],LIMITS,time.monotonic()+20,context['run_id'],session,context['seen_sources'])
+                inner.calls.extend(session.calls)
+                return dict(status='completed',observations=rows,page_events=events,page_fetch_attempts=len(events),returned_count=1,coverage=coverage(),cleanup_confirmed=True)
+        base=json.loads((ROOT/'config/queries.json').read_text())
+        self.config['queries']=[{**q,'enabled':True} for q in base['queries'][:2]];self.write_config()
+        collector=EnrichedCollector();result=collect(self.root,'shared',collector=collector,enrich=True,validation=True)
+        self.assertEqual(len(collector.calls),1);self.assertEqual(result['record_count'],1);self.assertEqual(result['page_fetch_attempts'],1)
+        store=self.store()
+        try:self.assertEqual(store.observations('shared')[0]['query_ids'],['q001','q002'])
+        finally:store.close()
+    def test_layout_refusal_stops_remaining_queries_and_releases_unused_pages(self):
+        class LayoutFailure(FakeCollector):
+            def review_ready(self):return True
+            def collect(inner,query,context):
+                inner.calls.append(query['id'])
+                return dict(status='failed',code='unsupported_layout',returned_count=0,observations=[],cleanup_confirmed=True,coverage=coverage(0,0,1,0),page_fetch_attempts=0,page_events=[],retrieval_diagnostics=dict(engines_skipped=15,recognized_results=0,recognized_empty=0,unsupported_layout=1,fetch_failed=0,engine_http_requests=2))
+        base=json.loads((ROOT/'config/queries.json').read_text());self.config['queries']=[{**q,'enabled':True} for q in base['queries'][:2]];self.write_config()
+        collector=LayoutFailure();result=collect(self.root,'layout-refused',collector=collector,enrich=True,validation=True)
+        self.assertEqual(collector.calls,['q001']);self.assertEqual(result['page_fetch_attempts'],0)
+        store=self.store()
+        try:self.assertEqual(store.query('layout-refused','q002')['state'],'blocked')
+        finally:store.close()
+    def test_larger_batches_are_blocked_before_collection_without_a_reviewed_pilot(self):
+        from robin_collect.limits import PolicyError
+        base=json.loads((ROOT/'config/queries.json').read_text())
+        self.config['queries']=[{**q,'enabled':True} for q in base['queries'][:4]];self.write_config()
+        collector=FakeCollector()
+        with self.assertRaises(PolicyError):collect(self.root,'too-soon',collector=collector)
+        self.assertFalse(collector.calls)
+    def test_quarantine_preserves_completed_run_and_prevents_resume(self):
+        from robin_collect.limits import PolicyError
+        collect(self.root,'quarantined',collector=FakeCollector())
+        store=self.store()
+        try:store.quarantine('quarantined');self.assertEqual(len(store.observations('quarantined')),1)
+        finally:store.close()
+        collector=FakeCollector()
+        with self.assertRaises(PolicyError):collect(self.root,'quarantined',resume=True,collector=collector)
+        self.assertFalse(collector.calls)
     def test_completed_query_resumes_without_a_second_network_dispatch(self):
         collector=FakeCollector();result=collect(self.root,'run1',collector=collector)
         self.assertEqual(result['status'],'completed');self.assertEqual(len(collector.calls),1)
@@ -177,7 +227,7 @@ class CollectionTests(unittest.TestCase):
             start=self.config['scope']['collection_dates']['start_date_utc'];end=self.config['scope']['collection_dates']['end_date_utc']
             store.create_run('two','hash','entities',start,end,self.config['queries'],self.config['limits'],'image')
             number=store.reserve('two','q001',3,end,'robin-capture-'+'d'*32)
-            rows=[observation({'title':'Northwind company customer database breach Alice Smith alice@example.invalid','link':URL.replace('/1','/2')},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start)),observation({'title':'Northwind company customer database breach Alice Smith alice@example.invalid update','link':URL},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start))]
+            rows=[observation({'title':'We obtained Northwind company customer database records Alice Smith alice@example.invalid','link':URL.replace('/1','/2')},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start)),observation({'title':'We obtained Northwind company customer database records Alice Smith alice@example.invalid update','link':URL},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start))]
             store.complete('two','q001',number,{'status':'completed','coverage':coverage(results=2),'returned_count':2,'observations':rows,'cleanup_confirmed':True})
             result=store.observations('two')
             self.assertEqual(len(result),2)

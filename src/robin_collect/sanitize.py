@@ -28,7 +28,7 @@ class PlainText(HTMLParser):
 
 
 RULES = [
-    ("email", re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)),
+    ("email", re.compile(r"(?<![A-Z0-9._%+-])[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]{1,253}\.[A-Z]{2,63}(?![A-Z0-9-])", re.I)),
     ("credential", re.compile(r"\b(?:password|passwd|api[_ -]?key|secret|token)\s*[:=]\s*[^\s,;]+", re.I)),
     ("phone", re.compile(r"(?<!\w)(?:\+?\d[\d(). -]{7,}\d)(?!\w)")),
     ("ipv4", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
