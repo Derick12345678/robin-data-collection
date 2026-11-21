@@ -1,5 +1,9 @@
 # Bounded live collection, source review, and release
 
+**Current retrieval controls:** read [quality repair and validation](retrieval-quality.md)
+first. The original full batch is quarantined. New larger batches require a passing
+human-reviewed relevance pilot, and only the verified Ahmia parser is enabled.
+
 ## Implemented workflow
 The pinned Robin adapter collects search metadata and can conditionally retrieve
 bounded text from direct result pages. Durable observations contain pseudonyms,

@@ -83,6 +83,7 @@ def record_vote(store,memory,run_id,observation_id,payload,now=None):
     fields={}
     receipt=None
     if payload['decision']=='include':
+        if store.quarantine_events(run_id):raise ValueError('Quarantined run cannot approve findings')
         if not context or context['receipt']!=record.get('context_receipt'):raise ValueError('Fresh source context is required')
         if any(payload[k] is not True for k in ['source_context_checked','privacy_checked','date_checked','duplicate_checked']):raise ValueError('Review checks are required')
         if payload['reason']!='explicit_organizational_exposure_claim' or payload['language']!='en':raise ValueError('Inclusion must meet scope')
@@ -110,6 +111,7 @@ def record_vote(store,memory,run_id,observation_id,payload,now=None):
 
 def eligibility(store,run_id,record):
     ensure_schema(store)
+    if store.quarantine_events(run_id):return {'status':'quarantined','reviewers':0}
     events=[dict(row) for row in store.db.execute('SELECT * FROM release_review_events WHERE run_id=? AND observation_id=? ORDER BY event_id',(run_id,record['observation_id']))]
     if not events:return {'status':'pending_review','reviewers':0}
     if events[-1]['decision']=='reject':return {'status':'rejected','reviewers':1}
@@ -121,6 +123,24 @@ def eligibility(store,run_id,record):
     if len(votes)<2:return {'status':'pending_second_review' if votes else 'pending_review','reviewers':len(votes)}
     if votes[0]['fields_json']!=votes[1]['fields_json']:return {'status':'review_disagreement','reviewers':len(votes)}
     return {'status':'eligible','reviewers':len(votes),'fields':json.loads(votes[0]['fields_json'])}
+
+
+CONTEXT_MESSAGES={
+    'available':'Bounded source context is available for review.',
+    'never_collected':'Page context was never collected. This is a discovery only and cannot be included.',
+    'fetch_failed':'Page retrieval did not produce usable text. This discovery cannot be included.',
+    'expired':'The temporary page context expired. A separately authorized new collection is required for inclusion.',
+    'lost_session':'The context is absent from this review session. It may have been lost on restart or delivery; inclusion is blocked.',
+}
+
+def context_state(memory,run_id,record,now=None):
+    now=now or datetime.now(timezone.utc)
+    context=memory.get(run_id,record['observation_id'])
+    if context and context['receipt']==record.get('context_receipt'):return 'available'
+    if record.get('page_status')!='ok':return 'fetch_failed' if 'page_status' in record else 'never_collected'
+    expires=record.get('context_expires_at_utc')
+    if expires and datetime.fromisoformat(expires)<=now:return 'expired'
+    return 'lost_session'
 
 
 def _read_exact(connection,count):

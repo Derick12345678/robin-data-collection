@@ -14,11 +14,13 @@ context lives in a separate private local memory session for at most 24 hours.
 Two actual reviewers must agree before an observation can enter an approved CSV.
 Review IDs are self-reported; independence is a team responsibility.
 
-**Dataset status:** the first frozen 15-query batch completed with 115 observations;
-all remain unresolved for release. See the [batch handoff](docs/batch-handoff.md).
-Collection artifacts remain unapproved until reviewed. A frozen
-private policy enables one dated batch; the tracked query registry stays disabled.
-The [initial pilot handoff](docs/pilot-results.md) documents an earlier transport test.
+**Dataset status:** the first 15-query batch is **quarantined as irrelevant** and
+cannot be released. The repaired retrieval path uses strict result extraction,
+relevance screening, shared page-attempt history, and a human-measured pilot gate.
+See [retrieval quality and validation](docs/retrieval-quality.md) and the
+[corrected pilot results](docs/relevance-validation-results.md). No final CSV is
+approved. The [batch handoff](docs/batch-handoff.md) is historical audit context.
+The tracked query registry remains disabled.
 
 ## Robin installation
 

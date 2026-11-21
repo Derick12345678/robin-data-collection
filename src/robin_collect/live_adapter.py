@@ -67,9 +67,9 @@ class MCPDockerTransport:
             if not re.fullmatch(r'[0-9a-f]{12,64}',ui):raise RuntimeError('UI unavailable')
             payload=(self.root/'deploy/collect_probe.py').read_text(encoding='utf-8')
             pilot_source=(self.root/'deploy/pilot_probe.py').read_text(encoding='utf-8')
-            modules={name:(self.root/'src/robin_collect'/name).read_text(encoding='utf-8') for name in ['__init__.py','normalize.py','sanitize.py','observations.py','limits.py','enrichment.py']}
+            modules={name:(self.root/'src/robin_collect'/name).read_text(encoding='utf-8') for name in ['__init__.py','normalize.py','sanitize.py','observations.py','limits.py','enrichment.py','screening.py','retrieval.py']}
             request={'config':context['config'],'key':context['key'],'entities':context['entities'],
-                'run_id':context.get('run_id',''),'page_tokens':context.get('page_tokens',[]),'query_id':query['id'],'operation_deadline_utc':context['operation_deadline_utc'],
+                'seen_sources':context.get('seen_sources',[]),'run_id':context.get('run_id',''),'page_tokens':context.get('page_tokens',[]),'query_id':query['id'],'operation_deadline_utc':context['operation_deadline_utc'],
                 'modules':modules,'pilot_source':pilot_source,'aggregate_source':self._aggregate_source()}
             self.health_module.capture([self.docker,'create','-i','--name',name,'--network','container:'+ui,
                 '--cap-drop','ALL','--security-opt','no-new-privileges:true','--log-driver','none','--tmpfs','/tmp:rw,noexec,nosuid,size=32m,mode=1777','--entrypoint','python3',self.image,'-c',payload],timeout=20)

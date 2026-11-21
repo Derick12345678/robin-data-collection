@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS collection_page_attempts (
  truncated INTEGER NOT NULL DEFAULT 0,reserved_at TEXT NOT NULL,finished_at TEXT,
  FOREIGN KEY(run_id,query_id,query_attempt) REFERENCES collection_attempts(run_id,query_id,attempt)
 );
+CREATE TABLE IF NOT EXISTS run_quarantine_events (
+ event_id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES collection_runs,
+ reason TEXT NOT NULL,created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS source_observations (
  observation_id TEXT PRIMARY KEY, source_id TEXT NOT NULL, content_id TEXT NOT NULL,
  safe_json TEXT NOT NULL, first_collected TEXT NOT NULL,last_collected TEXT NOT NULL,
@@ -95,7 +99,7 @@ class CollectionStore:
     def create_run(self, run_id, config_hash, entities_hash, start, end, queries, limits, image, options=None):
         with self.db:
             self.db.execute("INSERT INTO collection_runs(run_id,config_hash,entities_hash,started,finished,status,window_start,window_end,query_ids,limits_json,image,collector_version,policy_version,options_json) VALUES(?,?,?,?,NULL,'running',?,?,?,?,?,?,?,?)",
-                (run_id, config_hash, entities_hash, utc(), start, end, json.dumps([q['id'] for q in queries]), json.dumps(limits), image, '0.3.0', POLICY_VERSION, json.dumps(options or {})))
+                (run_id, config_hash, entities_hash, utc(), start, end, json.dumps([q['id'] for q in queries]), json.dumps(limits), image, '0.4.0', POLICY_VERSION, json.dumps(options or {})))
             for query in queries:
                 qhash = pseudonym(self.key, 'query', query['text'])
                 original = pseudonym(self.key, 'query', query.get('original_text',query['text']))
@@ -164,7 +168,7 @@ class CollectionStore:
             cleanup = bool(outcome['cleanup_confirmed'])
             status = outcome['status'] if cleanup else 'uncertain'
             events={event['token']:event for event in outcome.get('page_events',[])}
-            known=cleanup and status in {'completed','no_results','engines_unreachable'}
+            known=cleanup and (status in {'completed','no_results','engines_unreachable'} or outcome.get('code')=='unsupported_layout')
             for token in tokens:
                 event=events.get(token)
                 if known and event:
@@ -173,6 +177,12 @@ class CollectionStore:
                     self.db.execute("UPDATE collection_page_attempts SET state=?,finished_at=? WHERE token=?",('released' if known else 'uncertain',utc(),token))
             if status in {'completed', 'no_results'}:
                 for item in outcome['observations']:
+                    if item.get('page_selection')=='already_attempted':
+                        existing=self.db.execute("SELECT safe_json FROM observation_matches WHERE run_id=? AND json_extract(safe_json,'$.metadata_parent_id')=? ORDER BY collected_at,query_id LIMIT 1",(run_id,item['observation_id'])).fetchone()
+                        if existing:
+                            canonical=json.loads(existing['safe_json'])
+                            canonical.update(query_id=query_id,collected_at_utc=item['collected_at_utc'],page_selection='already_attempted')
+                            item=canonical
                     prior = self.db.execute("SELECT 1 FROM source_observations WHERE source_id=? AND observation_id<>? AND observation_id<>?", (item['source_pseudonym'], item['observation_id'],item.get('metadata_parent_id',''))).fetchone()
                     if prior:
                         self.db.execute("UPDATE source_observations SET change_review='requires_review' WHERE source_id=?", (item['source_pseudonym'],))
@@ -193,6 +203,17 @@ class CollectionStore:
         with self.db:
             self.db.execute("UPDATE collection_runs SET status=?,finished=? WHERE run_id=?", (status, utc(), run_id))
         return status
+
+    def quarantine_events(self,run_id):
+        return [dict(row) for row in self.db.execute('SELECT * FROM run_quarantine_events WHERE run_id=? ORDER BY event_id',(run_id,))]
+
+    def quarantine(self,run_id,reason='failed_relevance_pilot'):
+        self.run(run_id)
+        if reason not in {'failed_relevance_pilot','operator_reported_irrelevant'}:raise ValueError('Invalid quarantine reason')
+        with self.db:self.db.execute('INSERT INTO run_quarantine_events(run_id,reason,created_at) VALUES(?,?,?)',(run_id,reason,utc()))
+
+    def attempted_sources(self,run_id):
+        return sorted({row[0] for row in self.db.execute("SELECT source_id FROM collection_page_attempts WHERE run_id=? AND source_id IS NOT NULL AND state<>'released'",(run_id,))})
 
     def observations(self, run_id):
         result=[]
@@ -237,6 +258,8 @@ class CollectionStore:
         result['page_budget_held_or_uncertain']=sum(page['state'] in {'reserved','uncertain'} for page in result['pages'])
         result['raw_content_persisted']=False
         result['record_count']=len(self.observations(run_id))
+        result['quarantine_events']=self.quarantine_events(run_id)
+        result['research_suitability']='quarantined' if result['quarantine_events'] else 'unvalidated'
         result['dataset_approval']='not_approved'
         return result
 

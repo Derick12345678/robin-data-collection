@@ -50,14 +50,15 @@ def classify(text, published, window_start, lookback_days):
                 return "needs_review", "publication_date_uncertain", "unknown", "uncertain"
         except (ValueError, AttributeError):
             return "needs_review", "publication_date_uncertain", "unknown", "uncertain"
-    exposure = bool(re.search(r"\b(?:breach|leak|leaked|exposure|exposed|stolen)\b", lowered))
-    subject = bool(re.search(r"\b(?:company|corporate|organization|organizational|database|customer|employee|hospital|university|retail|business)\b", lowered))
-    category = "database" if "database" in lowered else "customer_data" if "customer" in lowered else "organizational_data" if subject else "unknown"
-    if exposure and subject:
-        return "candidate", "organizational_exposure_claim_unverified", category, "known" if published else "unknown"
-    if re.search(r"\b(?:welcome|directory|advertise|advertising)\b", lowered) and not exposure:
-        return "rejected", "generic_advertising", category, "known" if published else "unknown"
-    return "needs_review", "insufficient_context", category, "known" if published else "unknown"
+    from .screening import screen
+    hint=screen(text)
+    category='database' if 'database' in lowered else 'customer_data' if 'customer' in lowered else 'unknown'
+    if hint['screening_decision']=='eligible':
+        return 'candidate','organizational_exposure_claim_unverified',category,'known' if published else 'unknown'
+    if hint['screening_decision']=='exclude':
+        return 'rejected','generic_advertising',category,'known' if published else 'unknown'
+    return 'needs_review','insufficient_context',category,'known' if published else 'unknown'
+
 
 
 def observation(row, query_id, key, collected_at, window_start, entities=None, lookback_days=90):
@@ -84,7 +85,11 @@ def observation(row, query_id, key, collected_at, window_start, entities=None, l
     # addresses, secrets, source handles, and exposed records cannot leak through.
     safe_title = "Source observation [TITLE_" + pseudonym(key, "title", title) + "]"
     summary = "Possible organizational exposure claim; unverified." if decision == "candidate" else "Insufficient source context for an exposure finding." if decision == "needs_review" else "Excluded under collection criteria."
+    from .screening import screen
+    hint=screen(title,snippet,url,entities)
     return {
+        **hint,"page_selection":"not_selected",
+        "source_engine":row.get("source_engine","unknown"),"parser_profile":row.get("parser_profile","unknown"),
         "similarity_tokens": sorted({pseudonym(key,"similarity_token",token.casefold()) for token in re.findall(r"\w+",text)})[:64],
         "observation_id": identity, "source_pseudonym": source, "content_pseudonym": content_id,
         "query_id": query_id, "collected_at_utc": collected_at,
@@ -149,8 +154,9 @@ SAFE_KEYS = {
 
 
 def validate_observation(record, query_id):
+    quality={'screening_decision','screening_reason','screening_score','page_selection','source_engine','parser_profile'}
     optional={'metadata_parent_id','evidence_id','context_receipt','context_expires_at_utc','page_status','page_truncated','raw_response_bytes','extracted_characters','extracted_bytes','sector','broad_geography','claimed_exposure_type'}
-    if not isinstance(record,dict) or not SAFE_KEYS<=set(record) or not set(record)<=SAFE_KEYS|optional or record['query_id']!=query_id:
+    if not isinstance(record,dict) or not SAFE_KEYS<=set(record) or not set(record)<=SAFE_KEYS|optional|quality or record['query_id']!=query_id:
         raise ValueError('Invalid observation contract')
     for name in ['observation_id','source_pseudonym','content_pseudonym']:
         if not isinstance(record[name],str) or not re.fullmatch(r'[0-9a-f]{64}',record[name]):raise ValueError('Invalid pseudonym')
@@ -193,8 +199,14 @@ def validate_observation(record, query_id):
             if type(record['page_truncated']) is not bool:raise ValueError('Unsafe truncation flag')
             for name,values in [('sector',SECTORS),('broad_geography',REGIONS),('claimed_exposure_type',EXPOSURES)]:
                 if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Unsafe taxonomy')
-        elif set(record)!=SAFE_KEYS|{'page_status'}:raise ValueError('Unbound failed-page evidence')
-    elif set(record)!=SAFE_KEYS:raise ValueError('Unbound page evidence')
+        elif not set(record)<=SAFE_KEYS|quality|{'page_status'}:raise ValueError('Unbound failed-page evidence')
+    elif set(record)&optional:raise ValueError('Unbound page evidence')
+    if set(record)&quality:
+        from .screening import REASONS
+        if not quality<=set(record):raise ValueError('Incomplete screening provenance')
+        for name,values in [('screening_decision',{'eligible','defer','exclude'}),('screening_reason',REASONS),('source_engine',{'unknown','ahmia'}),('parser_profile',{'unknown','ahmia-results-v1'}),('page_selection',{'not_selected','selected','excluded','insufficient_evidence','already_attempted','budget_exhausted','deadline','captured','fetch_failed'})]:
+            if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Unsafe screening provenance')
+        if type(record['screening_score']) is not int or not 0<=record['screening_score']<=100:raise ValueError('Unsafe screening score')
     return record
 
 
@@ -203,7 +215,7 @@ def validate_outcome(outcome, cap, query_id, page_tokens=None):
     status=outcome.get('status')
     if not isinstance(status,str) or status not in {'completed','no_results','engines_unreachable','timed_out','failed'}:raise ValueError('Invalid outcome status')
     code=outcome.get('code')
-    if (code is not None and not isinstance(code,str)) or code not in {None,'all_locators_invalid','operation_deadline','capture_failed','transport_failed','container_deadline','cleanup_uncertain'}:raise ValueError('Unsafe outcome code')
+    if (code is not None and not isinstance(code,str)) or code not in {None,'all_locators_invalid','operation_deadline','capture_failed','transport_failed','container_deadline','cleanup_uncertain','unsupported_layout'}:raise ValueError('Unsafe outcome code')
     records=outcome.get('observations',[])
     if not isinstance(records,list) or len(records)>cap:raise ValueError('Observation cap exceeded')
     records=[validate_observation(row,query_id) for row in records]
@@ -237,6 +249,12 @@ def validate_outcome(outcome, cap, query_id, page_tokens=None):
         if not isinstance(event['status'],str) or event['status'] not in PAGE_STATUSES or not isinstance(event['reason'],str) or event['reason'] not in {'insufficient_relevance','missing_research_fields'} or type(event['wire_bytes']) is not int or not 0<=event['wire_bytes']<=RAW_RESPONSE_BYTES or type(event['truncated']) is not bool:raise ValueError('Invalid page event')
     if result.get('page_fetch_attempts',0)!=len(events) or result.get('model_calls',0)!=0:raise ValueError('Capture contract violated')
     if any('page_status' in r and r['source_pseudonym'] not in {e['source_pseudonym'] for e in events} for r in records):raise ValueError('Missing page provenance')
+    diagnostics=outcome.get('retrieval_diagnostics')
+    if diagnostics is not None:
+        names={'engines_skipped','recognized_results','recognized_empty','unsupported_layout','fetch_failed','engine_http_requests'}
+        if not isinstance(diagnostics,dict) or set(diagnostics)!=names or any(type(v) is not int or not 0<=v<=32 for v in diagnostics.values()):raise ValueError('Unsafe parser diagnostics')
+        result['retrieval_diagnostics']=diagnostics
+    if code=='unsupported_layout' and (status!='failed' or records or count!=0 or events or not diagnostics or not diagnostics['unsupported_layout']):raise ValueError('Invalid layout-failure evidence')
     result['page_events']=events
     result['result_cap_applied']=outcome.get('result_cap_applied') is True
     return result

@@ -118,25 +118,37 @@ def context_receipt(key,context):
     return pseudonym(key,'review_context',json.dumps(fields,ensure_ascii=False))
 
 
-def enrich_results(raw_rows,records,query_id,key,start,entities,lookback,tokens,limits,deadline,run_id,session):
+def enrich_results(raw_rows,records,query_id,key,start,entities,lookback,tokens,limits,deadline,run_id,session,seen_sources=None):
     by_source={pseudonym(key,'source',normalize_url(row['link'])):row for row in raw_rows if eligible_url(row.get('link',''))}
     events=[];contexts=[];result=[];available=iter(tokens)
+    from .screening import screen
+    seen=set(seen_sources or []);attempted=set()
+    records=sorted(records,key=lambda record:(-record.get('screening_score',0),record['source_pseudonym']))
     for record in records:
+        hint=screen(by_source.get(record['source_pseudonym'],{}).get('title',''),by_source.get(record['source_pseudonym'],{}).get('snippet',''),by_source.get(record['source_pseudonym'],{}).get('link',''),entities)
+        record={**record,**hint}
+        if hint['screening_decision']=='exclude':
+            result.append({**record,'page_selection':'excluded'});continue
+        if hint['screening_score']<55:
+            result.append({**record,'page_selection':'insufficient_evidence'});continue
+        if record['source_pseudonym'] in seen or record['source_pseudonym'] in attempted:
+            result.append({**record,'page_selection':'already_attempted'});continue
         if record['relevance_decision']=='rejected' or record['source_pseudonym'] not in by_source or deadline-time.monotonic()<9:
-            result.append(record);continue
+            result.append({**record,'page_selection':'deadline' if deadline-time.monotonic()<9 else 'not_selected'});continue
         token=next(available,None)
-        if token is None:result.append(record);continue
+        if token is None:result.append({**record,'page_selection':'budget_exhausted'});continue
+        attempted.add(record['source_pseudonym'])
         raw=by_source[record['source_pseudonym']]
         reason='insufficient_relevance' if record['relevance_decision']=='needs_review' else 'missing_research_fields'
         page=fetch_text(raw['link'],session,limits,deadline)
         event={'token':token,'source_pseudonym':record['source_pseudonym'],'status':page['status'],'reason':reason,'wire_bytes':page['wire_bytes'],'truncated':page['truncated']}
         events.append(event)
         if page['status']!='ok':
-            record={**record,'page_status':page['status']}
+            record={**record,'page_status':page['status'],'page_selection':'fetch_failed'}
             if page['status']=='disallowed_content':record.update(relevance_decision='rejected',relevance_reason='disallowed_content',summary_sanitized='Excluded under collection criteria.')
             result.append(record);continue
         stamp=datetime.now(timezone.utc)
-        enriched=observation({'title':raw.get('title',''),'snippet':page['text'],'link':raw['link'],'publication_date':page['publication_date']},query_id,key,stamp.isoformat(),datetime.fromisoformat(start),entities,lookback)
+        enriched=observation({'title':raw.get('title',''),'snippet':page['text'],'link':raw['link'],'publication_date':page['publication_date'],'source_engine':raw.get('source_engine','unknown'),'parser_profile':raw.get('parser_profile','unknown')},query_id,key,stamp.isoformat(),datetime.fromisoformat(start),entities,lookback)
         evidence=pseudonym(key,'page_evidence',normalize_text(page['text']))
         review_text=sanitize(page['text'])[0]
         clipped_review=review_text[:limits['page_characters']].encode('utf-8')[:limits['page_text_bytes']].decode('utf-8',errors='ignore')
@@ -145,7 +157,7 @@ def enrich_results(raw_rows,records,query_id,key,start,entities,lookback,tokens,
             'url':raw['link'],'title':sanitize(raw.get('title',''))[0][:1000],'text':clipped_review,
             'fetched_at_utc':stamp.isoformat(),'expires_at_utc':(stamp+timedelta(seconds=CONTEXT_TTL_SECONDS)).isoformat(),'evidence_id':evidence}
         context['receipt']=context_receipt(key,context)
-        enriched.update(source_capture='direct_result_page',metadata_parent_id=record['observation_id'],evidence_id=evidence,context_receipt=context['receipt'],
+        enriched.update(page_selection='captured',source_capture='direct_result_page',metadata_parent_id=record['observation_id'],evidence_id=evidence,context_receipt=context['receipt'],
             context_expires_at_utc=context['expires_at_utc'],page_status='ok',page_truncated=page['truncated'],
             raw_response_bytes=page['wire_bytes'],extracted_characters=len(page['text']),extracted_bytes=len(page['text'].encode('utf-8')),**taxonomy(page['text']))
         result.append(enriched);contexts.append(context)

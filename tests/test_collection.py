@@ -77,6 +77,56 @@ class CollectionTests(unittest.TestCase):
     def tearDown(self):self.temporary.cleanup()
     def write_config(self):(self.root/'config/queries.json').write_text(json.dumps(self.config))
     def store(self):return CollectionStore(self.root/'data/live/collection.sqlite',KEY)
+    def test_enrichment_history_is_shared_and_repeated_query_matches_reuse_evidence(self):
+        from robin_collect.enrichment import enrich_results
+        from test_enrichment import Session,LIMITS
+        import time
+        class EnrichedCollector(FakeCollector):
+            def review_ready(self):return True
+            def publish_contexts(self):return True
+            def collect(inner,query,context):
+                raw={'title':'Northwind company customer database breach claim','link':URL}
+                now=datetime.now(timezone.utc)
+                base=observation(raw,query['id'],context['key'],now.isoformat(),now)
+                session=Session()
+                rows,events,_=enrich_results([raw],[base],query['id'],context['key'],now.isoformat(),{},90,context['page_tokens'],LIMITS,time.monotonic()+20,context['run_id'],session,context['seen_sources'])
+                inner.calls.extend(session.calls)
+                return dict(status='completed',observations=rows,page_events=events,page_fetch_attempts=len(events),returned_count=1,coverage=coverage(),cleanup_confirmed=True)
+        base=json.loads((ROOT/'config/queries.json').read_text())
+        self.config['queries']=[{**q,'enabled':True} for q in base['queries'][:2]];self.write_config()
+        collector=EnrichedCollector();result=collect(self.root,'shared',collector=collector,enrich=True,validation=True)
+        self.assertEqual(len(collector.calls),1);self.assertEqual(result['record_count'],1);self.assertEqual(result['page_fetch_attempts'],1)
+        store=self.store()
+        try:self.assertEqual(store.observations('shared')[0]['query_ids'],['q001','q002'])
+        finally:store.close()
+    def test_layout_refusal_stops_remaining_queries_and_releases_unused_pages(self):
+        class LayoutFailure(FakeCollector):
+            def review_ready(self):return True
+            def collect(inner,query,context):
+                inner.calls.append(query['id'])
+                return dict(status='failed',code='unsupported_layout',returned_count=0,observations=[],cleanup_confirmed=True,coverage=coverage(0,0,1,0),page_fetch_attempts=0,page_events=[],retrieval_diagnostics=dict(engines_skipped=15,recognized_results=0,recognized_empty=0,unsupported_layout=1,fetch_failed=0,engine_http_requests=2))
+        base=json.loads((ROOT/'config/queries.json').read_text());self.config['queries']=[{**q,'enabled':True} for q in base['queries'][:2]];self.write_config()
+        collector=LayoutFailure();result=collect(self.root,'layout-refused',collector=collector,enrich=True,validation=True)
+        self.assertEqual(collector.calls,['q001']);self.assertEqual(result['page_fetch_attempts'],0)
+        store=self.store()
+        try:self.assertEqual(store.query('layout-refused','q002')['state'],'blocked')
+        finally:store.close()
+    def test_larger_batches_are_blocked_before_collection_without_a_reviewed_pilot(self):
+        from robin_collect.limits import PolicyError
+        base=json.loads((ROOT/'config/queries.json').read_text())
+        self.config['queries']=[{**q,'enabled':True} for q in base['queries'][:4]];self.write_config()
+        collector=FakeCollector()
+        with self.assertRaises(PolicyError):collect(self.root,'too-soon',collector=collector)
+        self.assertFalse(collector.calls)
+    def test_quarantine_preserves_completed_run_and_prevents_resume(self):
+        from robin_collect.limits import PolicyError
+        collect(self.root,'quarantined',collector=FakeCollector())
+        store=self.store()
+        try:store.quarantine('quarantined');self.assertEqual(len(store.observations('quarantined')),1)
+        finally:store.close()
+        collector=FakeCollector()
+        with self.assertRaises(PolicyError):collect(self.root,'quarantined',resume=True,collector=collector)
+        self.assertFalse(collector.calls)
     def test_completed_query_resumes_without_a_second_network_dispatch(self):
         collector=FakeCollector();result=collect(self.root,'run1',collector=collector)
         self.assertEqual(result['status'],'completed');self.assertEqual(len(collector.calls),1)

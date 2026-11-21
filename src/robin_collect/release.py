@@ -47,9 +47,10 @@ def release_bundle(root,run_id,allow_partial=False):
             rejected=[r for r in records if decisions[r['observation_id']]['status']=='rejected']
             pending=[r for r in records if decisions[r['observation_id']]['status'] not in {'eligible','rejected'}]
             incomplete=[q['query_id'] for q in manifest['queries'] if q['state'] not in {'completed','no_results'}]
-            blocked=bool(pending or incomplete) and (not allow_partial or not eligible)
+            quarantined=bool(manifest['quarantine_events'])
+            blocked=quarantined or (bool(pending or incomplete) and (not allow_partial or not eligible))
             report={'run_id':run_id,'created_at_utc':datetime.now(timezone.utc).isoformat(),
-                'status':'blocked_pending_review' if blocked else 'approved_partial' if pending or incomplete else 'approved',
+                'status':'blocked_quarantined' if quarantined else 'blocked_pending_review' if blocked else 'approved_partial' if pending or incomplete else 'approved',
                 'approved_csv_created':not blocked,'partial_requested':allow_partial,'eligible_count':len(eligible),
                 'rejected_count':len(rejected),'pending_count':len(pending),'incomplete_queries':incomplete,
                 'excluded_observation_ids':[r['observation_id'] for r in records if r not in eligible],

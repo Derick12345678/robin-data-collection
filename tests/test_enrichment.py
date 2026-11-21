@@ -57,7 +57,7 @@ class EnrichmentTests(unittest.TestCase):
         with self.assertRaises(TimeoutError):fetch_text(URL,session,LIMITS,time.monotonic()-1)
         self.assertFalse(session.calls)
     def test_enrichment_is_receipt_bound_and_requires_reserved_tokens(self):
-        now=datetime.now(timezone.utc);raw={'title':'Northwind forum','link':URL}
+        now=datetime.now(timezone.utc);raw={'title':'Northwind company database breach claim','link':URL}
         original=observation(raw,'q001',KEY,now.isoformat(),now)
         token='c'*32
         rows,events,contexts=enrich_results([raw],[original],'q001',KEY,now.isoformat(),{},90,[token],LIMITS,time.monotonic()+20,'synthetic-run',Session())

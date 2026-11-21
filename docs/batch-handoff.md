@@ -1,5 +1,8 @@
 # First frozen batch handoff
 
+**SUPERSEDED: this run is quarantined after owner review found its discoveries
+outside scope. It cannot be released or resumed. See [the quality repair](retrieval-quality.md).**
+
 Run `agreed-batch-01` completed all 15 approved queries on 2026-11-21 UTC.
 Its frozen scheduling window is 2026-11-21 01:42:21 UTC through
 2026-11-22 01:42:21 UTC. This was one batch, with no recurring schedule.
