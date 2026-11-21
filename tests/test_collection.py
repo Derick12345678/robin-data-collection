@@ -28,13 +28,13 @@ class FakeCollector:
         self.calls.append((query['id'],context['operation_deadline_utc']))
         if len(self.calls)==self.interrupt_at:raise KeyboardInterrupt('synthetic interruption')
         if len(self.calls)<=self.outages:return {'status':'engines_unreachable','coverage':coverage(0,0,16,0),'returned_count':0,'observations':[],'cleanup_confirmed':True}
-        row=observation({'title':'Northwind company customer database breach Alice Smith alice@example.invalid','link':URL},query['id'],context['key'],datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(context['config']['scope']['collection_dates']['start_date_utc']),context['entities'])
+        row=observation({'title':'We obtained Northwind company customer database records Alice Smith alice@example.invalid','link':URL},query['id'],context['key'],datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(context['config']['scope']['collection_dates']['start_date_utc']),context['entities'])
         return {'status':'completed','coverage':coverage(),'returned_count':1,'observations':[row],'cleanup_confirmed':self.cleaned,'page_fetch_attempts':0,'model_calls':0}
 
 
 class PrivacyTests(unittest.TestCase):
     def row(self,**changes):
-        source={'title':'Northwind company database breach Alice Smith alice@example.invalid','snippet':'SSN 123-45-6789, 123 Main Street, token=synthetic-secret','link':URL,**changes}
+        source={'title':'We obtained Northwind company database records Alice Smith alice@example.invalid','snippet':'SSN 123-45-6789, 123 Main Street, token=synthetic-secret','link':URL,**changes}
         return observation(source,'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.now(timezone.utc),{'Northwind':['Northwind']})
     def test_every_unstructured_field_is_withheld_and_entities_are_stable(self):
         row=self.row();encoded=json.dumps(row)
@@ -47,9 +47,9 @@ class PrivacyTests(unittest.TestCase):
         one=self.row();two=self.row(link=URL.replace('/1','/2'))
         self.assertNotEqual(one['observation_id'],two['observation_id'])
         self.assertEqual(one['content_pseudonym'],two['content_pseudonym'])
-        changed=self.row(title='Northwind company database breach update')
+        changed=self.row(title='We obtained Northwind company database records update')
         self.assertNotEqual(one['observation_id'],changed['observation_id'])
-        formatting=self.row(title='  Northwind   company database breach Alice Smith alice@example.invalid  ')
+        formatting=self.row(title='  We   obtained Northwind company database records Alice Smith alice@example.invalid  ')
         self.assertEqual(one['observation_id'],formatting['observation_id'])
     def test_unsafe_expansion_or_arbitrary_title_is_rejected(self):
         for field,value in [('title_sanitized','Alice Smith'),('extra','raw text'),('relevance_reason','secret source title'),('relevance_reason',[]),('title_sanitized',{}),('redaction_categories',[[]])]:
@@ -85,7 +85,7 @@ class CollectionTests(unittest.TestCase):
             def review_ready(self):return True
             def publish_contexts(self):return True
             def collect(inner,query,context):
-                raw={'title':'Northwind company customer database breach claim','link':URL}
+                raw={'title':'We obtained Northwind company customer database records claim','link':URL}
                 now=datetime.now(timezone.utc)
                 base=observation(raw,query['id'],context['key'],now.isoformat(),now)
                 session=Session()
@@ -227,7 +227,7 @@ class CollectionTests(unittest.TestCase):
             start=self.config['scope']['collection_dates']['start_date_utc'];end=self.config['scope']['collection_dates']['end_date_utc']
             store.create_run('two','hash','entities',start,end,self.config['queries'],self.config['limits'],'image')
             number=store.reserve('two','q001',3,end,'robin-capture-'+'d'*32)
-            rows=[observation({'title':'Northwind company customer database breach Alice Smith alice@example.invalid','link':URL.replace('/1','/2')},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start)),observation({'title':'Northwind company customer database breach Alice Smith alice@example.invalid update','link':URL},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start))]
+            rows=[observation({'title':'We obtained Northwind company customer database records Alice Smith alice@example.invalid','link':URL.replace('/1','/2')},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start)),observation({'title':'We obtained Northwind company customer database records Alice Smith alice@example.invalid update','link':URL},'q001',KEY,datetime.now(timezone.utc).isoformat(),datetime.fromisoformat(start))]
             store.complete('two','q001',number,{'status':'completed','coverage':coverage(results=2),'returned_count':2,'observations':rows,'cleanup_confirmed':True})
             result=store.observations('two')
             self.assertEqual(len(result),2)

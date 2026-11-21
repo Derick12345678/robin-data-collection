@@ -23,7 +23,7 @@ class ReviewTests(unittest.TestCase):
         self.store.create_run('review-run','config','entities',self.start,self.end,[{'id':'q001','text':'synthetic query'}],self.limits,'image',{'enrich':True})
         attempt=self.store.reserve('review-run','q001',3,self.end,'robin-capture-'+'d'*32)
         tokens=self.store.reserve_pages('review-run','q001',attempt,5)
-        raw={'title':'Northwind company database breach claim','link':URL};original=observation(raw,'q001',KEY,now.isoformat(),now)
+        raw={'title':'We obtained Northwind company database records claim','link':URL};original=observation(raw,'q001',KEY,now.isoformat(),now)
         self.rows,self.events,self.contexts=enrich_results([raw],[original],'q001',KEY,self.start,{},90,tokens,LIMITS,time.monotonic()+20,'review-run',Session())
         coverage=dict(engines_queried=1,engines_answered=1,engines_empty=0,engines_failed=0,results_raw=1,results_after_dedup=1,results_kept=1,results_dropped_abuse=0)
         self.store.complete('review-run','q001',attempt,dict(status='completed',observations=self.rows,coverage=coverage,returned_count=1,cleanup_confirmed=True,page_fetch_attempts=1,page_events=self.events))

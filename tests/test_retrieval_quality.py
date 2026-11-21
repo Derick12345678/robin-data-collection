@@ -17,7 +17,7 @@ from robin_collect.quality import fingerprint,validation_report
 from test_enrichment import KEY,URL,LIMITS,Session,Response
 
 ROOT=Path(__file__).resolve().parents[1]
-TITLE='Northwind company customer database breach claim'
+TITLE='We obtained Northwind company customer database records claim'
 
 def html(rows=True):
     outside='<nav><a href="'+URL+'/nav">Hidden wiki directory</a></nav><aside><a href="'+URL+'/ad">VPN subscription offers</a></aside>'

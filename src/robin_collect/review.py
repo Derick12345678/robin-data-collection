@@ -49,15 +49,18 @@ class ReviewMemory:
         self.prune(now);validated=[]
         required={'run_id','observation_id','source_pseudonym','url','title','text','fetched_at_utc','expires_at_utc','evidence_id','receipt'}
         for context in contexts:
-            if not isinstance(context,dict) or set(context)!=required:raise ValueError('Invalid review context')
+            if not isinstance(context,dict) or not required<=set(context) or not set(context)<=required|{'claim_evidence'}:raise ValueError('Invalid review context')
             if any(not isinstance(context[k],str) for k in required):raise ValueError('Invalid context value')
             if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',context['run_id']) or any(not re.fullmatch(r'[0-9a-f]{64}',context[k]) for k in ['observation_id','source_pseudonym','evidence_id','receipt']):raise ValueError('Invalid context identifiers')
             if len(context['text'])>10000 or len(context['title'])>1000 or len(context['url'])>2048 or not eligible_url(context['url']):raise ValueError('Context bound exceeded')
+            quotes=context.get('claim_evidence',[])
+            if not isinstance(quotes,list) or len(quotes)>3 or any(not isinstance(quote,str) or len(quote)>500 or quote not in context['title']+' '+context['text'] for quote in quotes):raise ValueError('Invalid private claim evidence')
             fetched=datetime.fromisoformat(context['fetched_at_utc']);expires=datetime.fromisoformat(context['expires_at_utc'])
             if fetched.tzinfo is None or expires.tzinfo is None or not fetched<=now<expires or expires-fetched>timedelta(days=7):raise ValueError('Context expired or invalid')
             if not hmac.compare_digest(context_receipt(self.key,context),context['receipt']):raise ValueError('Invalid evidence receipt')
             record=self.lookup(context['run_id'],context['observation_id'])
             if not record or record.get('context_receipt')!=context['receipt'] or record['source_pseudonym']!=context['source_pseudonym']:raise ValueError('Uncommitted evidence')
+            if record.get('screening_version') and ('claim_evidence' not in context or [pseudonym(self.key,'claim_evidence',quote) for quote in quotes]!=record.get('claim_evidence_pseudonyms')):raise ValueError('Claim quotes do not match committed evidence')
             validated.append(dict(context))
         with self.lock:
             if len(self.contexts)+len(validated)>self.limit:raise ValueError('Review memory full')
@@ -84,6 +87,9 @@ def record_vote(store,memory,run_id,observation_id,payload,now=None):
     receipt=None
     if payload['decision']=='include':
         if store.quarantine_events(run_id):raise ValueError('Quarantined run cannot approve findings')
+        from .screening import primary_claim_supported
+        if not primary_claim_supported(record,require_page=True):raise ValueError('An evidenced primary-source claim is required')
+        if [pseudonym(store.key,'claim_evidence',quote) for quote in (context or {}).get('claim_evidence',[])]!=record.get('claim_evidence_pseudonyms'):raise ValueError('Bound supporting quotes are required')
         if not context or context['receipt']!=record.get('context_receipt'):raise ValueError('Fresh source context is required')
         if any(payload[k] is not True for k in ['source_context_checked','privacy_checked','date_checked','duplicate_checked']):raise ValueError('Review checks are required')
         if payload['reason']!='explicit_organizational_exposure_claim' or payload['language']!='en':raise ValueError('Inclusion must meet scope')
@@ -92,7 +98,9 @@ def record_vote(store,memory,run_id,observation_id,payload,now=None):
         name=payload['organization_name']
         if not isinstance(name,str) or len(name)>200:raise ValueError('Invalid organization label')
         if name.strip() and name.strip().casefold() not in (context['title']+' '+context['text']).casefold():raise ValueError('Organization label must occur in reviewed context')
-        organization=pseudonym(store.key,'organization',' '.join(name.split()).casefold()) if name.strip() else (record['organization_pseudonyms'][0] if record['organization_pseudonyms'] else '')
+        targets=record.get('claim_target_pseudonyms',[])
+        organization=pseudonym(store.key,'organization',' '.join(name.split()).casefold()) if name.strip() else (targets[0] if len(targets)==1 else '')
+        if organization and organization not in record.get('claim_target_pseudonyms',[]):raise ValueError('Publisher/provider cannot be substituted for the supported victim')
         published=None
         if payload['publication_date']:
             if not isinstance(payload['publication_date'],str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',payload['publication_date']):raise ValueError('Invalid source date')
@@ -115,6 +123,8 @@ def eligibility(store,run_id,record):
     events=[dict(row) for row in store.db.execute('SELECT * FROM release_review_events WHERE run_id=? AND observation_id=? ORDER BY event_id',(run_id,record['observation_id']))]
     if not events:return {'status':'pending_review','reviewers':0}
     if events[-1]['decision']=='reject':return {'status':'rejected','reviewers':1}
+    from .screening import primary_claim_supported
+    if not primary_claim_supported(record,require_page=True):return {'status':'policy_ineligible','reviewers':0}
     cutoff=max([e['event_id'] for e in events if e['decision']!='include'] or [0])
     latest={}
     for event in events:

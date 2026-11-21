@@ -14,12 +14,12 @@ context lives in a separate private local memory session for at most 24 hours.
 Two actual reviewers must agree before an observation can enter an approved CSV.
 Review IDs are self-reported; independence is a team responsibility.
 
-**Dataset status:** the first 15-query batch is **quarantined as irrelevant** and
-cannot be released. The repaired retrieval path uses strict result extraction,
-relevance screening, shared page-attempt history, and a human-measured pilot gate.
-See [retrieval quality and validation](docs/retrieval-quality.md) and the
-[corrected pilot results](docs/relevance-validation-results.md). No final CSV is
-approved. The [batch handoff](docs/batch-handoff.md) is historical audit context.
+**Dataset status:** the original batch and the latest three-page pilot are
+quarantined after owner review found no qualifying primary-source findings.
+[Primary-source intent and role checks](docs/primary-claim-screening.md) now exclude
+news, tutorials, and generic service offers, require existing target-specific page
+evidence, and keep AI disabled. No final CSV is approved. Historical validation
+reports remain available for audit; a new pilot must use the tightened scope.
 The tracked query registry remains disabled.
 
 ## Robin installation

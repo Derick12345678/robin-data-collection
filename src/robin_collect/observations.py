@@ -7,7 +7,7 @@ import re
 from .normalize import normalize_text, normalize_url
 from .sanitize import sanitize
 
-POLICY_VERSION = "organizational-exposure-1-structured-only"
+POLICY_VERSION = "organizational-exposure-2-primary-claims-structured-only"
 
 
 def pseudonym(key, kind, value):
@@ -34,7 +34,7 @@ def validate_entities(entities):
     return entities
 
 
-def classify(text, published, window_start, lookback_days):
+def classify(text, published, window_start, lookback_days, hint=None):
     lowered = text.casefold()
     # Only finite, pre-defined outputs can persist. Hints are not authenticity findings.
     if re.search(r"\b(?:password|passwd|api[_ -]?key|token)\s*[:=]\s*\S+", text, re.I):
@@ -51,13 +51,13 @@ def classify(text, published, window_start, lookback_days):
         except (ValueError, AttributeError):
             return "needs_review", "publication_date_uncertain", "unknown", "uncertain"
     from .screening import screen
-    hint=screen(text)
+    hint=hint or screen(text)
     category='database' if 'database' in lowered else 'customer_data' if 'customer' in lowered else 'unknown'
     if hint['screening_decision']=='eligible':
         return 'candidate','organizational_exposure_claim_unverified',category,'known' if published else 'unknown'
     if hint['screening_decision']=='exclude':
-        return 'rejected','generic_advertising',category,'known' if published else 'unknown'
-    return 'needs_review','insufficient_context',category,'known' if published else 'unknown'
+        return 'rejected',hint['screening_reason'],category,'known' if published else 'unknown'
+    return 'needs_review',hint['screening_reason'],category,'known' if published else 'unknown'
 
 
 
@@ -76,19 +76,22 @@ def observation(row, query_id, key, collected_at, window_start, entities=None, l
     identity = pseudonym(key, "observation", source + "\0" + content_id)
     text = title + " " + snippet
     _, categories = sanitize(text)
-    organizations = []
-    for canonical, aliases in entities.items():
-        if any(re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", text, re.I) for alias in aliases):
-            organizations.append(pseudonym(key, "organization", normalize_text(canonical).casefold()))
-    decision, reason, category, date_status = classify(text, row.get("publication_date"), window_start, lookback_days)
+    from .screening import assess,PUBLIC_KEYS
+    assessment=assess(title,snippet,url,entities,evidence_from_body_only=row.get('_assessment_stage')=='page')
+    hint={name:assessment[name] for name in PUBLIC_KEYS}
+    targets=[pseudonym(key,'organization',value) for value in assessment['target_names']]
+    registry_names={' '.join(name.split()).casefold() for name in entities}
+    organizations=[pseudonym(key,'organization',value) for value in assessment['target_names'] if value in registry_names]
+    dataset_ids=[pseudonym(key,'dataset',value) for value in assessment['dataset_identifiers']]
+    quotes=[sanitize(quote)[0] for quote in assessment['evidence_quotes']]
+    evidence_ids=[pseudonym(key,'claim_evidence',quote) for quote in quotes]
+    decision, reason, category, date_status = classify(text, row.get("publication_date"), window_start, lookback_days,hint)
     # Withhold ALL original free text, not just regex matches. Unknown names,
     # addresses, secrets, source handles, and exposed records cannot leak through.
     safe_title = "Source observation [TITLE_" + pseudonym(key, "title", title) + "]"
     summary = "Possible organizational exposure claim; unverified." if decision == "candidate" else "Insufficient source context for an exposure finding." if decision == "needs_review" else "Excluded under collection criteria."
-    from .screening import screen
-    hint=screen(title,snippet,url,entities)
     return {
-        **hint,"page_selection":"not_selected",
+        **hint,"claim_target_pseudonyms":targets,"claim_dataset_pseudonyms":dataset_ids,"claim_evidence_pseudonyms":evidence_ids,"page_selection":"not_selected",
         "source_engine":row.get("source_engine","unknown"),"parser_profile":row.get("parser_profile","unknown"),
         "similarity_tokens": sorted({pseudonym(key,"similarity_token",token.casefold()) for token in re.findall(r"\w+",text)})[:64],
         "observation_id": identity, "source_pseudonym": source, "content_pseudonym": content_id,
@@ -155,8 +158,9 @@ SAFE_KEYS = {
 
 def validate_observation(record, query_id):
     quality={'screening_decision','screening_reason','screening_score','page_selection','source_engine','parser_profile'}
+    claims={'screening_version','source_intent','claim_evidence_type','claim_specificity','target_role','supporting_evidence_count','claim_target_pseudonyms','claim_dataset_pseudonyms','claim_evidence_pseudonyms','claim_assessment_basis'}
     optional={'metadata_parent_id','evidence_id','context_receipt','context_expires_at_utc','page_status','page_truncated','raw_response_bytes','extracted_characters','extracted_bytes','sector','broad_geography','claimed_exposure_type'}
-    if not isinstance(record,dict) or not SAFE_KEYS<=set(record) or not set(record)<=SAFE_KEYS|optional|quality or record['query_id']!=query_id:
+    if not isinstance(record,dict) or not SAFE_KEYS<=set(record) or not set(record)<=SAFE_KEYS|optional|quality|claims or record['query_id']!=query_id:
         raise ValueError('Invalid observation contract')
     for name in ['observation_id','source_pseudonym','content_pseudonym']:
         if not isinstance(record[name],str) or not re.fullmatch(r'[0-9a-f]{64}',record[name]):raise ValueError('Invalid pseudonym')
@@ -170,7 +174,7 @@ def validate_observation(record, query_id):
     allowed={
         'organization_detection':{'registry_match','unknown'},'research_category':{'database','customer_data','organizational_data','unknown'},
         'source_type':{'unknown','forum_post','marketplace_listing','leak_site_announcement','related_discussion'},'language':{'unknown'},'relevance_decision':{'candidate','rejected','needs_review'},
-        'relevance_reason':{'disallowed_content','out_of_date','publication_date_uncertain','organizational_exposure_claim_unverified','generic_advertising','insufficient_context'},
+        'relevance_reason':{'disallowed_content','out_of_date','publication_date_uncertain','organizational_exposure_claim_unverified','generic_advertising','insufficient_context','generic_directory','educational_content','secondary_reporting','service_advertising','insufficient_claim_evidence','no_specific_target','ambiguous_source_intent','hypothetical_or_negated_claim','specific_dataset_offer'},
         'publication_date_status':{'known','unknown','uncertain'},'review_status':{'pending_review'},
         'privacy_mode':{'structured_only'},'policy_version':{POLICY_VERSION},'source_capture':{'before_mcp_listing_truncation','direct_result_page'},
     }
@@ -199,7 +203,7 @@ def validate_observation(record, query_id):
             if type(record['page_truncated']) is not bool:raise ValueError('Unsafe truncation flag')
             for name,values in [('sector',SECTORS),('broad_geography',REGIONS),('claimed_exposure_type',EXPOSURES)]:
                 if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Unsafe taxonomy')
-        elif not set(record)<=SAFE_KEYS|quality|{'page_status'}:raise ValueError('Unbound failed-page evidence')
+        elif not set(record)<=SAFE_KEYS|quality|claims|{'page_status'}:raise ValueError('Unbound failed-page evidence')
     elif set(record)&optional:raise ValueError('Unbound page evidence')
     if set(record)&quality:
         from .screening import REASONS
@@ -207,6 +211,21 @@ def validate_observation(record, query_id):
         for name,values in [('screening_decision',{'eligible','defer','exclude'}),('screening_reason',REASONS),('source_engine',{'unknown','ahmia'}),('parser_profile',{'unknown','ahmia-results-v1'}),('page_selection',{'not_selected','selected','excluded','insufficient_evidence','already_attempted','budget_exhausted','deadline','captured','fetch_failed'})]:
             if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Unsafe screening provenance')
         if type(record['screening_score']) is not int or not 0<=record['screening_score']<=100:raise ValueError('Unsafe screening score')
+    if set(record)&claims:
+        from .screening import VERSION,INTENTS,CLAIM_TYPES,SPECIFICITY,primary_claim_supported
+        if not claims<=set(record) or not quality<=set(record):raise ValueError('Incomplete claim-role contract')
+        for name,values in [('screening_version',{VERSION}),('source_intent',INTENTS),('claim_evidence_type',CLAIM_TYPES),('claim_specificity',SPECIFICITY),('target_role',{'victim','unspecified'}),('claim_assessment_basis',{'search_metadata','page_text'})]:
+            if not isinstance(record[name],str) or record[name] not in values:raise ValueError('Unsafe claim-role label')
+        for name in ['claim_target_pseudonyms','claim_dataset_pseudonyms','claim_evidence_pseudonyms']:
+            values=record[name]
+            if not isinstance(values,list) or len(values)>3 or any(not isinstance(value,str) or not re.fullmatch(r'[0-9a-f]{64}',value) for value in values):raise ValueError('Unsafe role/evidence pseudonym')
+        if (record['claim_assessment_basis']=='page_text')!=('page_status' in record and record['page_status']=='ok'):raise ValueError('Inconsistent page evidence basis')
+        count=record['supporting_evidence_count']
+        if type(count) is not int or not 0<=count<=3 or count!=len(record['claim_evidence_pseudonyms']):raise ValueError('Invalid evidence count')
+        if record['screening_decision']=='eligible' and (not primary_claim_supported(record) or not (record['claim_target_pseudonyms'] or record['claim_dataset_pseudonyms'])):raise ValueError('Unsupported primary claim')
+        if record['screening_decision']!='eligible' and (count or record['claim_target_pseudonyms'] or record['claim_dataset_pseudonyms']):raise ValueError('Unbound target/evidence assertions')
+        specificity='victim_and_dataset' if record['claim_target_pseudonyms'] and record['claim_dataset_pseudonyms'] else 'victim_identified' if record['claim_target_pseudonyms'] else 'dataset_identified' if record['claim_dataset_pseudonyms'] else 'none'
+        if record['claim_specificity']!=specificity or (record['target_role']=='victim')!=bool(record['claim_target_pseudonyms']):raise ValueError('Inconsistent target role')
     return record
 
 

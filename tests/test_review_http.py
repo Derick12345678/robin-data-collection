@@ -43,10 +43,14 @@ class ReviewHTTPTests(unittest.TestCase):
                 with request() as response:
                     self.assertEqual(response.status,200)
                     self.assertIn("default-src 'none'",response.headers['Content-Security-Policy'])
-                    self.assertIn(b'Structured record and duplicate flags',response.read())
+                    html=response.read()
+                    self.assertIn(b'Structured record and duplicate flags',html)
+                    self.assertIn(b'Primary-source claim assessment',html)
+                    self.assertIn(b'Supporting text (private, temporary)',html)
                 auth={'Authorization':'Bearer '+session['token']}
                 with request('/api/records?run_id=synthetic',auth) as response:
                     data=json.load(response)
+                self.assertFalse(data['records'][0]['primary_claim_supported'])
                 self.assertEqual(data['research_suitability'],'quarantined')
                 self.assertEqual(data['records'][0]['context_status'],'never_collected')
                 self.assertEqual(data['records'][0]['release']['status'],'quarantined')

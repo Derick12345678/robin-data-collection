@@ -1,0 +1,160 @@
+{
+  "note": "Offline regression examples, not collected findings or measured live precision. Provider names are synthetic. The first three negative descriptions were supplied by the project owner.",
+  "cases": [
+    {
+      "id": "reported_financial_aid_breach",
+      "title": "Florida warns that 4.9 million people had Social Security numbers leaked in financial aid site breach",
+      "body": "",
+      "intent": "secondary_reporting",
+      "decision": "exclude"
+    },
+    {
+      "id": "forensics_service_guide",
+      "title": "Hire a Hacker for Cell Phone Forensics: The Complete 2026 Guide",
+      "body": "Published by ExampleProvider Ltd. Our investigation services include data breach investigation consulting.",
+      "intent": "service_advertisement",
+      "decision": "exclude"
+    },
+    {
+      "id": "generic_corporate_leak_service",
+      "title": "Corporate Leak Pull",
+      "body": "Retrieve leaked staff and client records from target company. Request this service.",
+      "intent": "service_advertisement",
+      "decision": "exclude"
+    },
+    {
+      "id": "news_quoting_a_claim",
+      "title": "News report: Northwind customer records exposed",
+      "body": "According to a third-party statement, \"We obtained Northwind customer records.\"",
+      "intent": "secondary_reporting",
+      "decision": "exclude"
+    },
+    {
+      "id": "prevention_tutorial",
+      "title": "How to prevent Northwind customer data leaks",
+      "body": "This guide discusses customer record exposure.",
+      "intent": "educational_content",
+      "decision": "exclude"
+    },
+    {
+      "id": "provider_is_not_victim",
+      "title": "Corporate investigation services",
+      "body": "Published by Northwind. We obtained customer records.",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "provider_in_same_clause",
+      "title": "Investigation update",
+      "body": "Published by Northwind customer records we obtained",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "hypothetical_future_target",
+      "title": "We can obtain Northwind customer records",
+      "body": "",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "negated_possession",
+      "title": "We have not obtained Northwind customer records",
+      "body": "",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "separated_target_and_claim",
+      "title": "Incident update",
+      "body": "Victim: Northwind. We obtained customer records.",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "no_assertion",
+      "title": "Northwind company database breach announcement",
+      "body": "",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "generic_directory",
+      "title": "Hidden Wiki onion links",
+      "body": "We obtained Northwind customer records.",
+      "intent": "directory",
+      "decision": "exclude"
+    },
+    {
+      "id": "nonorganizational_dataset",
+      "title": "For sale: movie dataset",
+      "body": "Dataset ID: MOVIES-2026",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "personal_records_not_org",
+      "title": "We obtained Alice Smith records",
+      "body": "",
+      "intent": "unknown",
+      "decision": "defer"
+    },
+    {
+      "id": "existing_named_victim",
+      "title": "We obtained Northwind customer records",
+      "body": "",
+      "intent": "primary_announcement",
+      "decision": "eligible",
+      "targets": [
+        "northwind"
+      ]
+    },
+    {
+      "id": "existing_named_listing",
+      "title": "For sale: Northwind employee database",
+      "body": "",
+      "intent": "specific_dataset_listing",
+      "decision": "eligible",
+      "targets": [
+        "northwind"
+      ]
+    },
+    {
+      "id": "identified_org_dataset",
+      "title": "For sale: corporate database, dataset ID: SYNTH-2026",
+      "body": "",
+      "intent": "specific_dataset_listing",
+      "decision": "eligible",
+      "datasets": [
+        "synth-2026"
+      ]
+    },
+    {
+      "id": "first_party_disclosure",
+      "title": "Incident notice",
+      "body": "We confirm our Northwind customer records were exposed.",
+      "intent": "primary_announcement",
+      "decision": "eligible",
+      "targets": [
+        "northwind"
+      ]
+    },
+    {
+      "id": "possession_with_provider_byline",
+      "title": "Claim statement",
+      "body": "Published by ExampleProvider. We obtained Northwind employee records.",
+      "intent": "primary_announcement",
+      "decision": "eligible",
+      "targets": [
+        "northwind"
+      ]
+    },
+    {
+      "id": "ambiguous_mixed_claim_types",
+      "title": "Claim update",
+      "body": "We obtained Northwind customer records. For sale: Contoso employee database.",
+      "intent": "unknown",
+      "decision": "defer"
+    }
+  ]
+}

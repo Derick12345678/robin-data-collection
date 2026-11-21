@@ -22,13 +22,13 @@ class PageText(HTMLParser):
         super().__init__();self.parts=[];self.hidden=0;self.dates=[]
     def handle_starttag(self,tag,attrs):
         attrs=dict(attrs)
-        if tag in {'script','style','noscript','template'}:self.hidden+=1
+        if tag in {'script','style','noscript','template','nav','footer','header','blockquote','q'}:self.hidden+=1
         if not self.hidden:
             self.parts.append(' ')
             if tag=='time' and attrs.get('datetime'):self.dates.append(attrs['datetime'])
             if tag=='meta' and (attrs.get('property') or attrs.get('name')) in {'article:published_time','datePublished'} and attrs.get('content'):self.dates.append(attrs['content'])
     def handle_endtag(self,tag):
-        if tag in {'script','style','noscript','template'}:self.hidden=max(0,self.hidden-1)
+        if tag in {'script','style','noscript','template','nav','footer','header','blockquote','q'}:self.hidden=max(0,self.hidden-1)
         if not self.hidden:self.parts.append(' ')
     def handle_data(self,data):
         if not self.hidden:self.parts.append(data)
@@ -114,6 +114,7 @@ def taxonomy(text):
 
 def context_receipt(key,context):
     fields=[context[k] for k in ['run_id','observation_id','source_pseudonym','url','title','text','fetched_at_utc','expires_at_utc','evidence_id']]
+    if 'claim_evidence' in context:fields.append(context['claim_evidence'])
     import json
     return pseudonym(key,'review_context',json.dumps(fields,ensure_ascii=False))
 
@@ -121,15 +122,15 @@ def context_receipt(key,context):
 def enrich_results(raw_rows,records,query_id,key,start,entities,lookback,tokens,limits,deadline,run_id,session,seen_sources=None):
     by_source={pseudonym(key,'source',normalize_url(row['link'])):row for row in raw_rows if eligible_url(row.get('link',''))}
     events=[];contexts=[];result=[];available=iter(tokens)
-    from .screening import screen
+    from .screening import PUBLIC_KEYS
     seen=set(seen_sources or []);attempted=set()
     records=sorted(records,key=lambda record:(-record.get('screening_score',0),record['source_pseudonym']))
     for record in records:
-        hint=screen(by_source.get(record['source_pseudonym'],{}).get('title',''),by_source.get(record['source_pseudonym'],{}).get('snippet',''),by_source.get(record['source_pseudonym'],{}).get('link',''),entities)
+        hint={name:record[name] for name in PUBLIC_KEYS}
         record={**record,**hint}
         if hint['screening_decision']=='exclude':
             result.append({**record,'page_selection':'excluded'});continue
-        if hint['screening_score']<55:
+        if hint['screening_decision']!='eligible' or hint['screening_score']<75:
             result.append({**record,'page_selection':'insufficient_evidence'});continue
         if record['source_pseudonym'] in seen or record['source_pseudonym'] in attempted:
             result.append({**record,'page_selection':'already_attempted'});continue
@@ -148,7 +149,7 @@ def enrich_results(raw_rows,records,query_id,key,start,entities,lookback,tokens,
             if page['status']=='disallowed_content':record.update(relevance_decision='rejected',relevance_reason='disallowed_content',summary_sanitized='Excluded under collection criteria.')
             result.append(record);continue
         stamp=datetime.now(timezone.utc)
-        enriched=observation({'title':raw.get('title',''),'snippet':page['text'],'link':raw['link'],'publication_date':page['publication_date'],'source_engine':raw.get('source_engine','unknown'),'parser_profile':raw.get('parser_profile','unknown')},query_id,key,stamp.isoformat(),datetime.fromisoformat(start),entities,lookback)
+        enriched=observation({'_assessment_stage':'page','title':raw.get('title',''),'snippet':page['text'],'link':raw['link'],'publication_date':page['publication_date'],'source_engine':raw.get('source_engine','unknown'),'parser_profile':raw.get('parser_profile','unknown')},query_id,key,stamp.isoformat(),datetime.fromisoformat(start),entities,lookback)
         evidence=pseudonym(key,'page_evidence',normalize_text(page['text']))
         review_text=sanitize(page['text'])[0]
         clipped_review=review_text[:limits['page_characters']].encode('utf-8')[:limits['page_text_bytes']].decode('utf-8',errors='ignore')
@@ -156,6 +157,14 @@ def enrich_results(raw_rows,records,query_id,key,start,entities,lookback,tokens,
         context={'run_id':run_id,'observation_id':enriched['observation_id'],'source_pseudonym':enriched['source_pseudonym'],
             'url':raw['link'],'title':sanitize(raw.get('title',''))[0][:1000],'text':clipped_review,
             'fetched_at_utc':stamp.isoformat(),'expires_at_utc':(stamp+timedelta(seconds=CONTEXT_TTL_SECONDS)).isoformat(),'evidence_id':evidence}
+        from .screening import assess
+        assessment=assess(raw.get('title',''),page['text'],raw['link'],entities,evidence_from_body_only=True)
+        quotes=[sanitize(quote)[0] for quote in assessment['evidence_quotes']]
+        visible=context['title']+' '+context['text']
+        context['claim_evidence']=[quote for quote in quotes if quote in visible]
+        if len(context['claim_evidence'])!=len(quotes):
+            enriched.update(screening_decision='defer',screening_reason='insufficient_claim_evidence',screening_score=0,claim_specificity='none',target_role='unspecified',claim_evidence_type='uncertain',organization_pseudonyms=[],organization_detection='unknown',supporting_evidence_count=0,claim_target_pseudonyms=[],claim_dataset_pseudonyms=[],claim_evidence_pseudonyms=[],relevance_decision='needs_review',relevance_reason='insufficient_claim_evidence',summary_sanitized='Insufficient source context for an exposure finding.')
+            context['claim_evidence']=[]
         context['receipt']=context_receipt(key,context)
         enriched.update(page_selection='captured',source_capture='direct_result_page',metadata_parent_id=record['observation_id'],evidence_id=evidence,context_receipt=context['receipt'],
             context_expires_at_utc=context['expires_at_utc'],page_status='ok',page_truncated=page['truncated'],

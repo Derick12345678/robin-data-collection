@@ -246,6 +246,8 @@ def write_artifacts(root,store,run_id):
         'truncated_page_records':sum(r.get('page_truncated',False) for r in records),
         'research_suitability':manifest['research_suitability'],
         'screening_counts':{state:sum(r.get('screening_decision')==state for r in records) for state in ['eligible','defer','exclude']},
+        'source_intent_counts':{intent:sum(r.get('source_intent')==intent for r in records) for intent in ['primary_announcement','specific_dataset_listing','secondary_reporting','educational_content','service_advertisement','directory','unknown']},
+        'primary_claim_candidates':sum(r.get('screening_version')=='primary-claims-1' and r.get('screening_decision')=='eligible' for r in records),
         'discovery_records':len(records),'finding_records':0,'source_claims_verified':False}
     directory=Path(root)/'outputs/live'/run_id
     directory.mkdir(parents=True,exist_ok=True,mode=0o700)

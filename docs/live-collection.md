@@ -1,5 +1,10 @@
 # Bounded live collection, source review, and release
 
+**Current scope:** see [primary-source claim screening](primary-claim-screening.md).
+The owner rejected the latest three readable pages; that pilot is quarantined.
+News, tutorials, and generic service offers cannot qualify as primary findings.
+
+
 **Current retrieval controls:** read [quality repair and validation](retrieval-quality.md)
 first. The original full batch is quarantined. New larger batches require a passing
 human-reviewed relevance pilot, and only the verified Ahmia parser is enabled.

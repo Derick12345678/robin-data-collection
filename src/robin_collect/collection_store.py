@@ -99,7 +99,7 @@ class CollectionStore:
     def create_run(self, run_id, config_hash, entities_hash, start, end, queries, limits, image, options=None):
         with self.db:
             self.db.execute("INSERT INTO collection_runs(run_id,config_hash,entities_hash,started,finished,status,window_start,window_end,query_ids,limits_json,image,collector_version,policy_version,options_json) VALUES(?,?,?,?,NULL,'running',?,?,?,?,?,?,?,?)",
-                (run_id, config_hash, entities_hash, utc(), start, end, json.dumps([q['id'] for q in queries]), json.dumps(limits), image, '0.4.0', POLICY_VERSION, json.dumps(options or {})))
+                (run_id, config_hash, entities_hash, utc(), start, end, json.dumps([q['id'] for q in queries]), json.dumps(limits), image, '0.5.0', POLICY_VERSION, json.dumps(options or {})))
             for query in queries:
                 qhash = pseudonym(self.key, 'query', query['text'])
                 original = pseudonym(self.key, 'query', query.get('original_text',query['text']))

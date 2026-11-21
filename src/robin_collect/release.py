@@ -13,8 +13,15 @@ from .sanitize import csv_safe
 FIELDS=['observation_id','source_pseudonym','organization_pseudonym','source_type','sector','broad_geography',
     'claimed_exposure_type','language','source_claimed_publication_date','date_precision','title_sanitized',
     'summary_sanitized','first_collected_at_utc','last_collected_at_utc','query_ids','run_id','page_truncated',
-    'claim_status','reviewer_count']
+    'claim_status','reviewer_count','source_intent','claim_evidence_type','claim_specificity','target_role','supporting_evidence_count','screening_version','claim_assessment_basis']
 DESCRIPTIONS={
+'claim_assessment_basis':'Always page_text for an included finding; search-result titles alone cannot establish the claim.',
+'source_intent':'Rule-assessed primary announcement or specific dataset listing; checked by reviewers.',
+'claim_evidence_type':'Existing exposure or existing sale claim; never a verified incident.',
+'claim_specificity':'Identified victim, identified dataset, or both; identities remain keyed pseudonyms.',
+'target_role':'Victim when an organization is supported as affected; otherwise unspecified for a dataset-only claim.',
+'supporting_evidence_count':'Number of bounded supporting clauses; quotations remain in expiring private memory.',
+'screening_version':'Version of the primary-source claim rule set applied at capture.',
 'observation_id':'Keyed source-and-content observation identity; enrichment links remain in the source manifest.',
 'source_pseudonym':'Stable keyed pseudonym of the normalized source locator; raw URL is absent.',
 'organization_pseudonym':'Reviewer-established organization pseudonym, or blank when not established.',
@@ -66,6 +73,7 @@ def release_bundle(root,run_id,allow_partial=False):
                     for record in eligible:
                         decision=decisions[record['observation_id']];fields=decision['fields']
                         row={name:fields.get(name,'') for name in FIELDS}
+                        row.update({name:record[name] for name in ['source_intent','claim_evidence_type','claim_specificity','target_role','supporting_evidence_count','screening_version','claim_assessment_basis']})
                         row.update(observation_id=record['observation_id'],source_pseudonym=record['source_pseudonym'],
                             title_sanitized=record['title_sanitized'],summary_sanitized='Unverified organizational '+fields['claimed_exposure_type'].replace('_',' ')+' claim.',
                             first_collected_at_utc=record['first_collected_at_utc'],last_collected_at_utc=record['last_collected_at_utc'],

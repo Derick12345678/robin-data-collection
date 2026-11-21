@@ -1,5 +1,10 @@
 # Retrieval quality repair and validation
 
+**Current scope:** see [primary-source claim screening](primary-claim-screening.md).
+The owner rejected the latest three readable pages; that pilot is quarantined.
+News, tutorials, and generic service offers cannot qualify as primary findings.
+
+
 ## Why the first batch is quarantined
 The owner assessed the two captured sites and the remaining discoveries as outside
 scope. `agreed-batch-01` is quarantined with an append-only run event; its 115
@@ -42,7 +47,7 @@ produced transport success without useful research evidence.
    Screening reason, score, engine/profile, selection reason, and quarantine status
    are visible. No original source free text enters the durable database or exports.
 6. **Expansion gate:** a larger run (more than three queries) requires a completed
-   validation run with 10â€“20 unique captured pages actually reviewed, at least 80%
+   validation run with 10Ã¢â‚¬â€œ20 unique captured pages actually reviewed, at least 80%
    relevance, no reviewer disagreement, matching collector fingerprint, and matching
    scope/limits. No automatic label or synthetic fixture counts as a human review.
    Included CSV rows still require two consistent actual reviewers, independently
@@ -74,7 +79,7 @@ python3 scripts/review.py access
 ```
 
 These document the already dispatched project validation run; do not repeat it
-blindly. The reviewed sample target is 10â€“20 unique pages; validation dispatch is
+blindly. The reviewed sample target is 10Ã¢â‚¬â€œ20 unique pages; validation dispatch is
 limited to the first three approved queries, at most 20 retained results each and
 five page attempts each. The approved 30/batch, 10/query, text, timeout, and retry
 ceilings still apply. No recurrent collection or policy renewal occurs.

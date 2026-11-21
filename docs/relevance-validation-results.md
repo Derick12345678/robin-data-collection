@@ -1,5 +1,10 @@
 # Retrieval repair validation handoff
 
+**Current scope:** see [primary-source claim screening](primary-claim-screening.md).
+The owner rejected the latest three readable pages; that pilot is quarantined.
+News, tutorials, and generic service offers cannot qualify as primary findings.
+
+
 The original `agreed-batch-01` is quarantined following the owner's relevance
 assessment. Its 115 observations remain in the audit store and cannot be released.
 No human votes were fabricated and no old observations were relabelled as findings.
@@ -66,7 +71,7 @@ Reviewers must judge actual relevance and privacy; do not approve the automated
 labels by default. A final CSV still requires two consistent actual reviewers for
 included records. The larger-batch quality gate remains **blocked**: there are
 zero actual reviews and only three readable page captures, below the ten-page
-minimum. At least 80% relevance across 10–20 reviewed unique pages is required.
+minimum. At least 80% relevance across 10â€“20 reviewed unique pages is required.
 
 Do not expand collection automatically or keep retrying inaccessible sources to
 manufacture a passing sample. The next evidence-informed decision is whether the

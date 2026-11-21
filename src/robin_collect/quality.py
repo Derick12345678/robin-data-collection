@@ -24,6 +24,7 @@ def scope_fingerprint(config):
 
 
 def validation_report(store,run_id):
+    from .screening import primary_claim_supported
     run=store.run(run_id);options=json.loads(run['options_json']);records=store.observations(run_id)
     ensure_schema(store)
     sample=[];included=0;disagreed=0
@@ -35,6 +36,7 @@ def validation_report(store,run_id):
         decisions={event['decision'] for event in latest.values()}
         if not decisions or 'needs_review' in decisions:continue
         if len(decisions)>1:disagreed+=1;continue
+        if decisions=={'include'} and not primary_claim_supported(record,require_page=True):continue
         if decisions=={'include'} and any(event['context_receipt']!=record.get('context_receipt') for event in latest.values()):continue
         sample.append(record['observation_id']);included+=decisions=={'include'}
     count=len(sample);precision=included/count if count else None
