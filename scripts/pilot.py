@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "deploy"))
 from robin_collect.limits import load_policy
-from robin import docker_binary
+from robin import docker_binary, project_path
 from robin_health import diagnose, capture
 from pilot_probe import aggregate
 
@@ -54,7 +54,7 @@ def main():
         report.update(status="blocked", code="local_health_not_ready", health_code=health["code"])
     else:
         lock = json.loads((ROOT / "deploy/robin.lock.json").read_text(encoding="utf-8"))
-        compose = [docker, "compose", "--project-directory", str(ROOT), "-f", str(ROOT / "compose.yaml")]
+        compose = [docker, "compose", "--project-directory", project_path(ROOT, docker), "-f", project_path(ROOT / "compose.yaml", docker)]
         ui = capture(compose + ["ps", "-q", "robin-ui"])
         name = "robin-" + report["run_id"]
         report.update(robin_release=lock["release"], image=lock["image"])

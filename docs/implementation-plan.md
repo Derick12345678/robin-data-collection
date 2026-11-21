@@ -17,8 +17,8 @@ Owner: collection lead, reviewed by research lead.
 Installation and diagnostic substeps are implemented: pinned deployment; strict
 bootstrap evidence; Docker, UI, and MCP checks; optional two-worker engine probes.
 Collection-limit policy validation and reusable enforcement guards are implemented
-and synthetically tested; see `docs/collection-limits.md`. Wiring those guards into
-the full live adapter, model configuration, and production collection dates remain
+and synthetically tested; see `docs/collection-limits.md`. The live metadata path now persists those guards and attempt budgets.
+Model configuration, richer page collection, and production collection dates remain
 outstanding. A metadata-only controlled pilot is implemented and successfully run;
 see `docs/controlled-pilot.md`. Relevance and analysis-ready exports are not part
 of that transport test. See `docs/health-checks.md` for diagnostics.
@@ -31,6 +31,12 @@ Acceptance: reproducible setup and one bounded, authorized query with complete
 status reporting; unavailable engines are distinguished from zero results.
 
 ## Milestone 2 â€” live adapter and orchestration
+Implemented for metadata: bounded MCP capture, sanitize-before-output, durable
+charged attempts, frozen policies, cleanup/recovery, per-source observation IDs,
+immutable run snapshots, and append-only review events. The live validation saved
+10 structured records, all requiring more source context. See
+[live collection](live-collection.md). Page retrieval and richer text remain deferred.
+
 Owner: collection engineer.
 - Implement `RobinMCPCollector`, result conversion, and scope enforcement.
 - Capture original/refined queries and engine outcomes in a restricted manifest.

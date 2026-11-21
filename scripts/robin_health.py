@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+from robin_collect.deployment import project_path
 
 
 class ProbeFailure(Exception):
@@ -71,7 +72,7 @@ def diagnose(root: Path, docker: str, check_engines=False):
         report["stage"] = "compose"
         capture([docker, "compose", "version", "--short"])
         checks["compose"] = {"status": "available"}
-        compose = [docker, "compose", "--project-directory", str(root), "-f", str(root / "compose.yaml")]
+        compose = [docker, "compose", "--project-directory", project_path(root, docker), "-f", project_path(root / "compose.yaml", docker)]
         report["stage"] = "container"
         ids = capture(compose + ["ps", "-q", "robin-ui"])
         if not re.fullmatch(r"[0-9a-f]{12,64}", ids):

@@ -42,7 +42,7 @@ the reason in the future run manifest. No automatic query pivots or recursive cr
 ## Conditional page collection
 Search titles/snippets come first. Fetch only a retained direct result when metadata
 cannot establish relevance (`insufficient_relevance`) or support required research
-fields (`missing_research_fields`). The reason must be recorded by the future adapter.
+fields (`missing_research_fields`). The reason must be recorded when optional page collection is implemented.
 Only current-query result IDs are eligible; beginning the next search invalidates
 older IDs. Downloads, attachments, samples, credentials, source interaction, and
 recursive links remain excluded by the approved scope.
@@ -71,12 +71,13 @@ at the earlier operation/window deadline. Publication lookback is a separate
 relevance rule, not the collection execution window.
 
 ## Integration boundary
-These guards are implemented and tested with synthetic async callbacks. The live
-Robin adapter remains unimplemented, so this does not claim that manual UI actions
-or arbitrary MCP clients obey the policy. The existing offline CSV import command
-is unchanged and does not simulate source-fetch budgets.
+These guards are implemented and tested with synthetic async callbacks. The
+structured metadata adapter now persists charged attempts and shared deadlines;
+see [live collection](live-collection.md). It does not retrieve result pages. Manual
+UI actions and arbitrary MCP clients are not governed by this controller. The
+offline CSV importer does not simulate source-fetch budgets.
 
-Before live collection, the adapter must:
+For richer collection beyond the implemented metadata adapter, the integration must:
 1. Pass explicit policy parameters instead of trusting editable UI defaults.
 2. Route all source operations through one batch executor and classify retryable
    errors conservatively. Finish a query before starting the next one.
