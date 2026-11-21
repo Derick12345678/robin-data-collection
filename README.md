@@ -14,7 +14,9 @@ context lives in a separate private local memory session for at most 24 hours.
 Two actual reviewers must agree before an observation can enter an approved CSV.
 Review IDs are self-reported; independence is a team responsibility.
 
-**Dataset status:** collection artifacts remain unapproved until reviewed. A frozen
+**Dataset status:** the first frozen 15-query batch completed with 115 observations;
+all remain unresolved for release. See the [batch handoff](docs/batch-handoff.md).
+Collection artifacts remain unapproved until reviewed. A frozen
 private policy enables one dated batch; the tracked query registry stays disabled.
 The [initial pilot handoff](docs/pilot-results.md) documents an earlier transport test.
 
